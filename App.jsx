@@ -3,7 +3,7 @@ import {
   Menu, X, LogOut, School, Users, Building2, LayoutDashboard, BookOpen,
   ClipboardList, FileBarChart, ScrollText, History, Save, Eye, EyeOff,
   Crown, UserCheck, UserX, Pencil, Trash2, Plus, ShieldCheck, Wallet,
-  Landmark, GraduationCap, Layers, Package, ChevronLeft,
+  Landmark, GraduationCap, Layers, Package, ChevronLeft, Download, ExternalLink,
 } from "lucide-react";
 import {
   observarSessao, cadastrar, entrar, sair, recuperarSenha, traduzErroAuth, CODIGO_MESTRE,
@@ -3991,15 +3991,42 @@ function ManualProfSistema() {
   );
 }
 
+// Link para os PDFs dos manuais — arquivos estáticos servidos pelo próprio
+// GitHub Pages (pasta public/manuais/ do projeto). BASE_URL respeita o
+// subcaminho de publicação do site automaticamente.
+function BotoesPDF({ arquivo, nome }) {
+  const url = `${import.meta.env.BASE_URL}manuais/${arquivo}`;
+  return (
+    <div className="flex flex-wrap gap-2 mb-4">
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-line text-sm text-ink hover:border-green hover:text-green transition-colors"
+      >
+        <ExternalLink size={15} /> Abrir PDF em nova aba
+      </a>
+      <a
+        href={url}
+        download={nome}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green text-white text-sm hover:opacity-90 transition-opacity"
+      >
+        <Download size={15} /> Baixar PDF
+      </a>
+    </div>
+  );
+}
+
 function GestaoManualProfessorView() {
   const [sub, setSub] = useState("turmas");
   return (
     <div>
       <h2 className="text-lg font-serif font-semibold text-ink mb-1">Manual do Professor</h2>
-      <p className="text-sm text-inkSoft mb-4">
+      <p className="text-sm text-inkSoft mb-3">
         Funcionalidade e operacionalidade dos acessos de Mestre/Professor — cadastro e gestão de
         turmas, empresas, usuários, plano de contas, auditoria e backup.
       </p>
+      <BotoesPDF arquivo="Manual_do_Professor.pdf" nome="Manual do Professor.pdf" />
       <SubNav itens={MANUAL_PROF_SUBS} atual={sub} aoTrocar={setSub} />
       {sub === "turmas" && <ManualProfTurmas />}
       {sub === "empresas" && <ManualProfEmpresas />}
@@ -4014,6 +4041,8 @@ function GestaoManualView() {
   const [sub, setSub] = useState("acesso");
   return (
     <div>
+      <h2 className="text-lg font-serif font-semibold text-ink mb-1">Manual do Aluno</h2>
+      <BotoesPDF arquivo="Manual_do_Aluno.pdf" nome="Manual do Aluno.pdf" />
       <SubNav itens={MANUAL_SUBS} atual={sub} aoTrocar={setSub} />
       {sub === "acesso" && <ManualAcesso />}
       {sub === "ciclo" && <ManualCicloContabil />}
