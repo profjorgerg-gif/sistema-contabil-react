@@ -2,19 +2,13 @@ import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
-// ============================================================================
-// COLE AQUI AS 6 CHAVES DO SEU PROJETO NO FIREBASE
-// (Firebase Console → ⚙ Configurações do projeto → seus apps → app da Web →
-// "SDK do Firebase" → objeto firebaseConfig). Ver Seção 4 do manual de
-// operacionalização — "Checklist para iniciar um novo projeto".
-// ============================================================================
 const firebaseConfig = {
-  apiKey: "COLE_AQUI",
-  authDomain: "COLE_AQUI",
-  projectId: "COLE_AQUI",
-  storageBucket: "COLE_AQUI",
-  messagingSenderId: "COLE_AQUI",
-  appId: "COLE_AQUI",
+  apiKey: "AIzaSyD0RiXGCd-gwthIUAURdP5l23aOLDkeczM",
+  authDomain: "sistema-contabil-basico-cedup.firebaseapp.com",
+  projectId: "sistema-contabil-basico-cedup",
+  storageBucket: "sistema-contabil-basico-cedup.firebasestorage.app",
+  messagingSenderId: "133331580587",
+  appId: "1:133331580587:web:1381d49a594b488a6769ee",
 };
 
 export const app = initializeApp(firebaseConfig);
