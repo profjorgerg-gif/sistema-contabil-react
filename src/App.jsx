@@ -51,8 +51,6 @@ const PERMISSAO_LABELS = {
 
 // Módulos que ainda chegam nas próximas fases da migração (Fase 2 em diante).
 const MODULOS_FUTUROS = [
-  { id: "introducao", label: "Introdução à Contabilidade", icon: GraduationCap, fase: 4 },
-  { id: "manual", label: "Manual do Aluno", icon: BookOpen, fase: 4 },
   { id: "relatorios", label: "Relatórios", icon: FileBarChart, fase: 5 },
   { id: "backup", label: "Backup", icon: Save, fase: 5 },
 ];
@@ -73,6 +71,12 @@ const EMPRESA_ITENS = [
   { id: "dre", label: "DRE", icon: FileBarChart },
   { id: "encerramento", label: "Encerramento (ARE)", icon: History },
   { id: "balanco", label: "Balanço Patrimonial", icon: Landmark },
+];
+
+// Conteúdo de apoio didático (Fase 4) — não depende de empresa ativa.
+const APRENDIZADO_ITENS = [
+  { id: "introducao", label: "Introdução à Contabilidade", icon: GraduationCap },
+  { id: "manual", label: "Manual do Aluno", icon: BookOpen },
 ];
 
 // ============================================================================
@@ -748,6 +752,19 @@ function Layout({ perfil, aba, setAba, children }) {
             </button>
           ))}
 
+          <div className="px-5 pt-4 pb-1 text-[11px] uppercase tracking-wide text-white/40">Aprendizado</div>
+          {APRENDIZADO_ITENS.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => irPara(item.id)}
+              className={`w-full flex items-center gap-3 px-5 py-2.5 text-sm text-left hover:bg-white/10 ${
+                aba === item.id ? "bg-white/10 text-gold font-semibold" : "text-white/85"
+              }`}
+            >
+              <item.icon size={17} /> {item.label}
+            </button>
+          ))}
+
           <div className="px-5 pt-4 pb-1 text-[11px] uppercase tracking-wide text-white/40">
             Módulos (próximas fases)
           </div>
@@ -1205,6 +1222,40 @@ function tipoSugerido(nivel) {
   return { 1: "Grupo", 2: "Subgrupo", 3: "Conta Sintética", 4: "Conta Analítica", 5: "Subconta Analítica" }[nivel] || "Conta Analítica";
 }
 
+function grupoDigitoBase(grupo) {
+  const mapa = {
+    Ativo: "1", Passivo: "2", "Patrimônio Líquido": "3", Receitas: "4",
+    Despesas: "5", Custos: "6", Resultado: "7", "Contas de Compensação": "8",
+  };
+  return mapa[grupo] || "9";
+}
+
+// Sugere o próximo código disponível dentro do Grupo + Tipo escolhidos, seguindo
+// a mesma sequência das contas já existentes (incrementa o último segmento do
+// maior código encontrado). Sem nenhuma conta desse Tipo no Grupo, tenta usar a
+// conta de nível mais raso do Grupo como "pai" (código.01); sem nenhuma conta no
+// Grupo ainda, parte do dígito-base do Grupo (Ativo=1, Passivo=2, ...).
+function sugerirProximoCodigo(contas, grupo, tipo) {
+  const candidatas = contas.filter((c) => c.grupo === grupo && c.tipo === tipo);
+  if (candidatas.length > 0) {
+    const maior = candidatas
+      .slice()
+      .sort((a, b) => a.codigo.localeCompare(b.codigo, undefined, { numeric: true }))
+      .pop();
+    const partes = maior.codigo.split(".");
+    const ultimoStr = partes[partes.length - 1];
+    const novoUltimo = String((parseInt(ultimoStr, 10) || 0) + 1).padStart(ultimoStr.length, "0");
+    partes[partes.length - 1] = novoUltimo;
+    return partes.join(".");
+  }
+  const doGrupo = contas.filter((c) => c.grupo === grupo);
+  if (doGrupo.length > 0) {
+    const maisRasa = doGrupo.slice().sort((a, b) => a.nivel - b.nivel)[0];
+    return `${maisRasa.codigo}.01`;
+  }
+  return `${grupoDigitoBase(grupo)}.1`;
+}
+
 function GestaoPlanoContasView({ perfil, contas, salvarPlanoContas, auditoria, registrarAuditoria }) {
   const podeEditar = perfil?.tipo === "Mestre";
   const [filtro, setFiltro] = useState("");
@@ -1221,6 +1272,20 @@ function GestaoPlanoContasView({ perfil, contas, salvarPlanoContas, auditoria, r
     aceitaLancamento: true,
   });
   const [form, setForm] = useState(formVazio());
+  const [sugestaoAtual, setSugestaoAtual] = useState("");
+
+  // Sugere automaticamente o próximo código disponível quando o professor troca
+  // Grupo/Tipo numa conta NOVA — mas nunca sobrescreve um código já digitado à
+  // mão (só substitui se o campo estiver vazio ou ainda for a última sugestão).
+  useEffect(() => {
+    if (!mostrarForm || editandoCodigo) return;
+    const sugestao = sugerirProximoCodigo(contas, form.grupo, form.tipo);
+    if (!form.codigo || form.codigo === sugestaoAtual) {
+      setForm((f) => ({ ...f, codigo: sugestao }));
+    }
+    setSugestaoAtual(sugestao);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.grupo, form.tipo, mostrarForm, editandoCodigo]);
 
   const linhas = contas.filter((c) => {
     if (!filtro) return true;
@@ -1331,7 +1396,7 @@ function GestaoPlanoContasView({ perfil, contas, salvarPlanoContas, auditoria, r
             {editandoCodigo ? `Editar conta ${editandoCodigo}` : "Nova conta"}
           </h3>
           <form onSubmit={salvar} className="grid sm:grid-cols-2 gap-3">
-            <Field label="Código" hint={editandoCodigo ? "O código não pode ser alterado numa conta já existente." : 'Números separados por ponto, ex.: "1.1.1.08"'}>
+            <Field label="Código" hint={editandoCodigo ? "O código não pode ser alterado numa conta já existente." : "Sugerido automaticamente a partir do Grupo e Tipo escolhidos — pode editar se preferir outro número."}>
               <TxtInput
                 required
                 disabled={!!editandoCodigo}
@@ -2316,6 +2381,736 @@ function GestaoBalancoView({ empresa, lancamentos, saldos }) {
 }
 
 // ============================================================================
+// FASE 4 — Introdução à Contabilidade e Manual do Aluno. Conteúdo didático de
+// apoio + o Controle de Estoque (PEPS/UEPS/Média Ponderada), que é global ao
+// sistema (não por empresa) por ser um exercício comparativo, não ligado à
+// escrituração de uma empresa específica.
+// ============================================================================
+
+function SubNav({ itens, atual, aoTrocar }) {
+  return (
+    <div className="flex flex-wrap gap-2 mb-4 border-b border-line pb-3">
+      {itens.map((s) => (
+        <button
+          key={s.id}
+          onClick={() => aoTrocar(s.id)}
+          className={
+            "px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors " +
+            (s.id === atual
+              ? "bg-green text-white border-green"
+              : "bg-transparent text-inkSoft border-line hover:border-green hover:text-green")
+          }
+        >
+          {s.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ConceptCard({ titulo, children }) {
+  return (
+    <Card>
+      <h4 className="font-serif font-semibold text-ink mb-1.5">{titulo}</h4>
+      <p className="text-sm text-inkSoft">{children}</p>
+    </Card>
+  );
+}
+
+// ---- Introdução à Contabilidade ----
+
+const INTRO_SUBS = [
+  { id: "principios", label: "Princípios Contábeis" },
+  { id: "classificacao", label: "Classificação de Contas" },
+  { id: "estruturabp", label: "Estrutura do BP" },
+  { id: "regimes", label: "Regimes Contábeis" },
+  { id: "estoque", label: "Controle de Estoque" },
+];
+
+const PRINCIPIOS_CONTABEIS = [
+  ["Entidade", "Separa o patrimônio da empresa do patrimônio de seus sócios ou proprietários. A contabilidade registra os fatos da entidade, nunca os bens particulares dos donos."],
+  ["Continuidade", "Assume-se que a entidade seguirá em operação por prazo indeterminado, salvo evidência em contrário. Essa premissa orienta, por exemplo, os critérios de avaliação de ativos."],
+  ["Oportunidade", "Os fatos contábeis devem ser reconhecidos de forma tempestiva e completa, no momento em que ocorrem, garantindo informação íntegra e confiável."],
+  ["Registro pelo Valor Original", "Os elementos patrimoniais são inicialmente registrados pelos valores de entrada (custo histórico), expressos em moeda nacional, podendo sofrer atualizações previstas em normas específicas."],
+  ["Competência", "Receitas e despesas são reconhecidas no período em que ocorrem, independentemente de terem sido recebidas ou pagas. É o regime obrigatório para fins societários no Brasil."],
+  ["Prudência (Conservadorismo)", "Diante de incerteza, adota-se o menor valor para ativos e receitas e o maior valor para passivos e despesas, evitando superavaliar o patrimônio."],
+];
+
+function IntroPrincipios() {
+  return (
+    <div>
+      <h3 className="font-serif font-semibold text-ink text-lg mb-1">Princípios Contábeis</h3>
+      <p className="text-sm text-inkSoft mb-4">
+        Doutrinariamente consolidados a partir da Resolução CFC nº 750/1993 e recepcionados pela
+        Estrutura Conceitual do CPC/NBC TG, orientam todo o processo de registro e evidenciação
+        contábil.
+      </p>
+      <div className="grid sm:grid-cols-2 gap-3">
+        {PRINCIPIOS_CONTABEIS.map(([t, d]) => (
+          <ConceptCard key={t} titulo={t}>{d}</ConceptCard>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function IntroClassificacao({ contas }) {
+  const linhasClassificacao = [
+    ["Ativo", "Patrimonial", "Devedora"],
+    ["Passivo", "Patrimonial", "Credora"],
+    ["Patrimônio Líquido", "Patrimonial", "Credora"],
+    ["Receitas", "Resultado", "Credora"],
+    ["Despesas", "Resultado", "Devedora"],
+    ["Custos", "Resultado", "Devedora"],
+    ["Resultado", "Apuração", "Variável"],
+    ["Contas de Compensação", "Extrapatrimonial", "Compensação"],
+  ];
+  const contagem = (grupo) => contas.filter((c) => c.grupo === grupo && c.aceitaLancamento).length;
+
+  return (
+    <div>
+      <h3 className="font-serif font-semibold text-ink text-lg mb-1">Classificação das Contas</h3>
+      <p className="text-sm text-inkSoft mb-4">
+        Todo o Plano de Contas do sistema deriva desta classificação. As contas dividem-se primeiro
+        em <b>patrimoniais</b> (compõem o Balanço) e <b>de resultado</b> (compõem a DRE), além das
+        contas de compensação.
+      </p>
+      <Card className="overflow-x-auto mb-4">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs text-inkSoft border-b border-line">
+              <th className="py-2 pr-3">Grupo</th>
+              <th className="py-2 pr-3">Tipo</th>
+              <th className="py-2 pr-3">Natureza</th>
+              <th className="py-2 pr-3 text-right">Contas analíticas no plano</th>
+            </tr>
+          </thead>
+          <tbody>
+            {linhasClassificacao.map(([grupo, tipo, natureza]) => (
+              <tr key={grupo} className="border-b border-line/50">
+                <td className="py-1.5 pr-3">{grupo}</td>
+                <td className="py-1.5 pr-3">{tipo}</td>
+                <td className="py-1.5 pr-3"><PillNatureza natureza={natureza} /></td>
+                <td className="py-1.5 pr-3 text-right">{contagem(grupo)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+      <div className="text-xs text-inkSoft space-y-2">
+        <p>
+          <b>Regra de funcionamento das contas:</b> uma conta aumenta seu saldo quando lançada do
+          lado da sua própria natureza (débito para devedoras, crédito para credoras) e diminui
+          quando lançada do lado oposto. Contas redutoras — como "(-) Depreciação Acumulada" — têm
+          natureza inversa à do grupo em que estão inseridas.
+        </p>
+        <p>
+          <b>Hierarquia:</b> Grupo (1 dígito) → Subgrupo (1.1) → Conta Sintética (1.1.1) → Conta
+          Analítica (1.1.1.01) → Subconta Analítica (1.1.1.01.01). Somente as contas analíticas e
+          subcontas recebem lançamento — as demais servem apenas para totalização. Veja a lista
+          completa no módulo <b>Plano de Contas</b>.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function IntroEstruturaBP() {
+  return (
+    <div>
+      <h3 className="font-serif font-semibold text-ink text-lg mb-1">Estrutura do Balanço Patrimonial</h3>
+      <p className="text-sm text-inkSoft mb-4">
+        O Balanço Patrimonial retrata, numa data específica, os bens e direitos (Ativo) e as
+        obrigações e o patrimônio líquido (Passivo + PL) de uma entidade. Conforme a Lei nº
+        6.404/76, os elementos são ordenados por grau decrescente de liquidez, no Ativo, e por grau
+        decrescente de exigibilidade, no Passivo.
+      </p>
+      <div className="text-center font-serif font-bold text-ink text-lg mb-4">
+        ATIVO <span className="text-gold mx-2">=</span> PASSIVO <span className="text-gold mx-2">+</span> PATRIMÔNIO LÍQUIDO
+      </div>
+      <div className="grid sm:grid-cols-2 gap-4 mb-4">
+        <Card>
+          <h4 className="font-serif font-semibold text-ink mb-2">ATIVO</h4>
+          <div className="text-sm text-inkSoft mb-2">
+            <b className="text-ink">Circulante</b> — Bens e direitos realizáveis em até 12 meses:
+            caixa, bancos, aplicações, clientes, estoques, despesas antecipadas.
+          </div>
+          <div className="text-sm text-inkSoft">
+            <b className="text-ink">Não Circulante</b> — Realizável a Longo Prazo, Investimentos,
+            Imobilizado e Intangível — realização prevista acima de 12 meses.
+          </div>
+        </Card>
+        <Card>
+          <h4 className="font-serif font-semibold text-ink mb-2">PASSIVO + PL</h4>
+          <div className="text-sm text-inkSoft mb-2">
+            <b className="text-ink">Passivo Circulante</b> — Obrigações exigíveis em até 12 meses:
+            fornecedores, salários, tributos, empréstimos de curto prazo.
+          </div>
+          <div className="text-sm text-inkSoft mb-2">
+            <b className="text-ink">Passivo Não Circulante</b> — Obrigações exigíveis acima de 12
+            meses.
+          </div>
+          <div className="text-sm text-inkSoft">
+            <b className="text-ink">Patrimônio Líquido</b> — Capital social, reservas e resultados
+            acumulados — a diferença entre o Ativo e o Passivo exigível; representa os recursos
+            próprios da entidade.
+          </div>
+        </Card>
+      </div>
+      <div className="text-xs text-inkSoft">
+        O módulo <b>Balanço Patrimonial</b> deste sistema aplica exatamente esta estrutura,
+        calculada automaticamente a partir dos lançamentos de cada empresa cadastrada.
+      </div>
+    </div>
+  );
+}
+
+function IntroRegimes() {
+  return (
+    <div>
+      <h3 className="font-serif font-semibold text-ink text-lg mb-1">Regimes Contábeis</h3>
+      <p className="text-sm text-inkSoft mb-4">
+        Definem <b>quando</b> uma receita ou despesa deve ser reconhecida nos registros contábeis.
+      </p>
+      <Card className="overflow-x-auto mb-4">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs text-inkSoft border-b border-line">
+              <th className="py-2 pr-3 w-40"></th>
+              <th className="py-2 pr-3">Regime de Caixa</th>
+              <th className="py-2 pr-3">Regime de Competência</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr className="border-b border-line/50">
+              <td className="py-2 pr-3 font-semibold text-ink">Reconhecimento</td>
+              <td className="py-2 pr-3">No momento do efetivo recebimento ou pagamento em dinheiro.</td>
+              <td className="py-2 pr-3">No momento em que o fato gerador ocorre, independentemente do recebimento/pagamento.</td>
+            </tr>
+            <tr className="border-b border-line/50">
+              <td className="py-2 pr-3 font-semibold text-ink">Uso permitido</td>
+              <td className="py-2 pr-3">Controles gerenciais simples, pessoa física, fluxo de caixa.</td>
+              <td className="py-2 pr-3">Obrigatório para a escrituração societária, por força da Lei nº 6.404/76 e das NBC TG.</td>
+            </tr>
+            <tr className="border-b border-line/50">
+              <td className="py-2 pr-3 font-semibold text-ink">Exemplo</td>
+              <td className="py-2 pr-3">Venda a prazo em dezembro, recebida em fevereiro: a receita só é registrada em fevereiro.</td>
+              <td className="py-2 pr-3">A mesma venda: a receita é registrada em dezembro (quando ocorre a venda), e "Clientes" registra o direito a receber.</td>
+            </tr>
+            <tr>
+              <td className="py-2 pr-3 font-semibold text-ink">Vantagem</td>
+              <td className="py-2 pr-3">Simplicidade operacional.</td>
+              <td className="py-2 pr-3">Reflete com fidelidade a real situação patrimonial e o resultado do período.</td>
+            </tr>
+          </tbody>
+        </table>
+      </Card>
+      <div className="text-xs text-inkSoft">
+        O Livro Diário deste sistema (módulo <b>Lançamentos</b>) segue o <b>regime de
+        competência</b>: ao lançar uma venda a prazo, por exemplo, debita-se "Clientes" (Ativo) e
+        credita-se a conta de receita — o caixa só é afetado quando o valor for efetivamente
+        recebido, em um lançamento posterior.
+      </div>
+    </div>
+  );
+}
+
+// ---- Controle de Estoque (PEPS / UEPS / Média Ponderada) ----
+// Movimentações globais ao sistema (não por empresa) — é um exercício
+// comparativo de método de custeio, não uma escrituração real de uma empresa.
+
+function computeKardexPEPS(movs) {
+  let lots = [], cmvTotal = 0;
+  const rows = movs.map((m) => {
+    let obs = "";
+    if (m.tipo === "Entrada") {
+      lots.push({ qtd: Number(m.quantidade), valorUnit: Number(m.valorUnit) });
+    } else {
+      let falta = Number(m.quantidade), custo = 0;
+      while (falta > 0.0001 && lots.length) {
+        const lot = lots[0];
+        if (lot.qtd <= falta + 0.0001) { custo += lot.qtd * lot.valorUnit; falta -= lot.qtd; lots.shift(); }
+        else { custo += falta * lot.valorUnit; lot.qtd -= falta; falta = 0; }
+      }
+      if (falta > 0.0001) obs = "estoque insuficiente";
+      cmvTotal += custo;
+      m = { ...m, custoSaida: custo };
+    }
+    const saldoQtd = lots.reduce((s, l) => s + l.qtd, 0);
+    const saldoValor = lots.reduce((s, l) => s + l.qtd * l.valorUnit, 0);
+    return { ...m, saldoQtd, saldoValor, obs };
+  });
+  return { rows, estoqueFinalQtd: lots.reduce((s, l) => s + l.qtd, 0), estoqueFinalValor: lots.reduce((s, l) => s + l.qtd * l.valorUnit, 0), cmvTotal };
+}
+
+function computeKardexUEPS(movs) {
+  let lots = [], cmvTotal = 0;
+  const rows = movs.map((m) => {
+    let obs = "";
+    if (m.tipo === "Entrada") {
+      lots.push({ qtd: Number(m.quantidade), valorUnit: Number(m.valorUnit) });
+    } else {
+      let falta = Number(m.quantidade), custo = 0;
+      while (falta > 0.0001 && lots.length) {
+        const lot = lots[lots.length - 1];
+        if (lot.qtd <= falta + 0.0001) { custo += lot.qtd * lot.valorUnit; falta -= lot.qtd; lots.pop(); }
+        else { custo += falta * lot.valorUnit; lot.qtd -= falta; falta = 0; }
+      }
+      if (falta > 0.0001) obs = "estoque insuficiente";
+      cmvTotal += custo;
+      m = { ...m, custoSaida: custo };
+    }
+    const saldoQtd = lots.reduce((s, l) => s + l.qtd, 0);
+    const saldoValor = lots.reduce((s, l) => s + l.qtd * l.valorUnit, 0);
+    return { ...m, saldoQtd, saldoValor, obs };
+  });
+  return { rows, estoqueFinalQtd: lots.reduce((s, l) => s + l.qtd, 0), estoqueFinalValor: lots.reduce((s, l) => s + l.qtd * l.valorUnit, 0), cmvTotal };
+}
+
+function computeKardexMP(movs) {
+  let qtd = 0, valorTotal = 0, cmvTotal = 0;
+  const rows = movs.map((m) => {
+    let obs = "";
+    if (m.tipo === "Entrada") {
+      qtd += Number(m.quantidade);
+      valorTotal += Number(m.quantidade) * Number(m.valorUnit);
+    } else {
+      if (Number(m.quantidade) > qtd + 0.0001) obs = "estoque insuficiente";
+      const custoUnitAtual = qtd > 0 ? valorTotal / qtd : 0;
+      const custoSaida = Math.min(Number(m.quantidade), qtd) * custoUnitAtual;
+      cmvTotal += custoSaida;
+      qtd -= Math.min(Number(m.quantidade), qtd);
+      valorTotal -= custoSaida;
+      m = { ...m, custoSaida };
+    }
+    return { ...m, saldoQtd: qtd, saldoValor: valorTotal, obs };
+  });
+  return { rows, estoqueFinalQtd: qtd, estoqueFinalValor: valorTotal, cmvTotal };
+}
+
+function seedEstoqueMovs() {
+  return [
+    { id: uid("k"), data: "2026-01-02", tipo: "Entrada", quantidade: 100, valorUnit: 10 },
+    { id: uid("k"), data: "2026-01-08", tipo: "Saída", quantidade: 60 },
+    { id: uid("k"), data: "2026-01-15", tipo: "Entrada", quantidade: 80, valorUnit: 12 },
+    { id: uid("k"), data: "2026-01-22", tipo: "Saída", quantidade: 90 },
+    { id: uid("k"), data: "2026-01-28", tipo: "Entrada", quantidade: 50, valorUnit: 11 },
+    { id: uid("k"), data: "2026-01-30", tipo: "Saída", quantidade: 40 },
+  ];
+}
+
+function KardexColuna({ titulo, k }) {
+  return (
+    <div className="min-w-[280px]">
+      <h5 className="font-serif font-semibold text-ink text-center border-b-2 border-ink pb-2 mb-2 text-sm">
+        {titulo}
+      </h5>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-left text-inkSoft border-b border-line">
+              <th className="py-1 pr-2">Data</th>
+              <th className="py-1 pr-2">Mov.</th>
+              <th className="py-1 pr-2 text-right">Qtd</th>
+              <th className="py-1 pr-2 text-right">Vlr Unit.</th>
+              <th className="py-1 pr-2 text-right">Saldo Qtd</th>
+              <th className="py-1 pr-2 text-right">Saldo Vlr</th>
+            </tr>
+          </thead>
+          <tbody>
+            {k.rows.map((r, i) => (
+              <tr key={i} className="border-b border-line/50 whitespace-nowrap">
+                <td className="py-1 pr-2">{fmtDate(r.data)}</td>
+                <td className="py-1 pr-2">
+                  {r.tipo}
+                  {r.obs && <span className="text-red"> ⚠</span>}
+                </td>
+                <td className="py-1 pr-2 text-right">{r.quantidade}</td>
+                <td className="py-1 pr-2 text-right">
+                  {r.tipo === "Entrada" ? numFmt(r.valorUnit) : r.custoSaida != null ? numFmt(r.custoSaida / r.quantidade) : "—"}
+                </td>
+                <td className="py-1 pr-2 text-right">{r.saldoQtd}</td>
+                <td className="py-1 pr-2 text-right">{numFmt(r.saldoValor)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function IntroEstoque({ perfil, estoqueMovs, salvarEstoqueMovs }) {
+  const podeExcluir = !!perfil?.permissoes?.excluirLancamentos;
+  const movs = estoqueMovs || [];
+  const [form, setForm] = useState({ data: new Date().toISOString().slice(0, 10), tipo: "Entrada", quantidade: "", valorUnit: "" });
+  const [erro, setErro] = useState("");
+
+  const peps = computeKardexPEPS(movs);
+  const ueps = computeKardexUEPS(movs);
+  const mp = computeKardexMP(movs);
+
+  const salvar = async (e) => {
+    e.preventDefault();
+    const quantidade = Number(form.quantidade);
+    if (form.tipo === "Entrada" && !(Number(form.valorUnit) > 0)) {
+      setErro("Informe o valor unitário da entrada.");
+      return;
+    }
+    const saldoAtual = movs.reduce((s, m) => s + (m.tipo === "Entrada" ? Number(m.quantidade) : -Number(m.quantidade)), 0);
+    if (form.tipo === "Saída" && quantidade > saldoAtual + 0.0001) {
+      setErro(`Estoque insuficiente: há apenas ${saldoAtual} unidade(s) disponível(is).`);
+      return;
+    }
+    setErro("");
+    const novoMov = {
+      id: uid("k"), data: form.data, tipo: form.tipo, quantidade,
+      valorUnit: form.tipo === "Entrada" ? Number(form.valorUnit) : undefined,
+    };
+    await salvarEstoqueMovs([...movs, novoMov]);
+    setForm({ data: new Date().toISOString().slice(0, 10), tipo: form.tipo, quantidade: "", valorUnit: "" });
+  };
+
+  const carregarExemplo = async () => {
+    await salvarEstoqueMovs([...movs, ...seedEstoqueMovs()]);
+  };
+
+  const limparTudo = async () => {
+    if (!podeExcluir) {
+      alert("Você não tem permissão para excluir movimentações de estoque.");
+      return;
+    }
+    if (!confirm("Excluir todas as movimentações de estoque cadastradas?")) return;
+    await salvarEstoqueMovs([]);
+  };
+
+  return (
+    <div>
+      <h3 className="font-serif font-semibold text-ink text-lg mb-1">Controle de Estoque — PEPS, UEPS e Média Ponderada</h3>
+      <p className="text-sm text-inkSoft mb-4">
+        Compare, com os mesmos dados de movimentação, como cada critério de avaliação de estoque
+        afeta o Custo da Mercadoria Vendida (CMV) e o valor do estoque final.
+      </p>
+
+      <div className="grid sm:grid-cols-3 gap-3 mb-4">
+        <ConceptCard titulo="PEPS · FIFO — Primeiro que Entra, Primeiro que Sai">
+          As saídas são baixadas pelo custo dos lotes mais antigos em estoque. Em cenários de
+          preços crescentes, tende a gerar CMV menor e estoque final mais próximo do valor de
+          reposição.
+        </ConceptCard>
+        <ConceptCard titulo="UEPS · LIFO — Último que Entra, Primeiro que Sai">
+          As saídas são baixadas pelo custo dos lotes mais recentes. Tende a aproximar o CMV do
+          custo de reposição atual.{" "}
+          <span className="text-red">
+            ⚠ Não é aceito pela legislação fiscal brasileira nem pelo CPC 16 / NBC TG 16 —
+            apresentado aqui apenas para fins comparativos e didáticos.
+          </span>
+        </ConceptCard>
+        <ConceptCard titulo="MP — Média Ponderada Móvel">
+          A cada nova entrada, recalcula-se o custo médio unitário do estoque. As saídas seguintes
+          são baixadas por esse custo médio, até a entrada seguinte.
+        </ConceptCard>
+      </div>
+
+      <h3 className="font-serif font-semibold text-ink mb-3">Movimentações de estoque</h3>
+      <Card className="mb-4">
+        <form onSubmit={salvar} className="grid sm:grid-cols-4 gap-3">
+          <Field label="Data">
+            <TxtInput type="date" required value={form.data} onChange={(e) => setForm({ ...form, data: e.target.value })} />
+          </Field>
+          <Field label="Movimento">
+            <SelectInput value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value })}>
+              <option value="Entrada">Entrada (compra)</option>
+              <option value="Saída">Saída (venda/consumo)</option>
+            </SelectInput>
+          </Field>
+          <Field label="Quantidade">
+            <TxtInput type="number" min="0.01" step="0.01" required value={form.quantidade} onChange={(e) => setForm({ ...form, quantidade: e.target.value })} />
+          </Field>
+          {form.tipo === "Entrada" && (
+            <Field label="Valor unitário (R$)">
+              <TxtInput type="number" min="0.01" step="0.01" required value={form.valorUnit} onChange={(e) => setForm({ ...form, valorUnit: e.target.value })} />
+            </Field>
+          )}
+          {erro && <div className="sm:col-span-4 text-sm text-red">{erro}</div>}
+          <div className="sm:col-span-4 flex flex-wrap gap-2">
+            <Botao type="submit">Adicionar movimentação</Botao>
+            <Botao type="button" variant="ghost" onClick={carregarExemplo}>Carregar exemplo</Botao>
+            {podeExcluir && (
+              <Botao type="button" variant="ghost" onClick={limparTudo}>Limpar tudo</Botao>
+            )}
+          </div>
+        </form>
+      </Card>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
+        <Card><div className="text-xs text-inkSoft">Estoque Final — PEPS</div><div className="font-semibold text-ink">{peps.estoqueFinalQtd} un · {money(peps.estoqueFinalValor)}</div></Card>
+        <Card><div className="text-xs text-inkSoft">Estoque Final — UEPS</div><div className="font-semibold text-ink">{ueps.estoqueFinalQtd} un · {money(ueps.estoqueFinalValor)}</div></Card>
+        <Card><div className="text-xs text-inkSoft">Estoque Final — Média Ponderada</div><div className="font-semibold text-ink">{mp.estoqueFinalQtd} un · {money(mp.estoqueFinalValor)}</div></Card>
+        <Card><div className="text-xs text-inkSoft">CMV — PEPS</div><div className="font-semibold text-red">{money(peps.cmvTotal)}</div></Card>
+        <Card><div className="text-xs text-inkSoft">CMV — UEPS</div><div className="font-semibold text-red">{money(ueps.cmvTotal)}</div></Card>
+        <Card><div className="text-xs text-inkSoft">CMV — Média Ponderada</div><div className="font-semibold text-red">{money(mp.cmvTotal)}</div></Card>
+      </div>
+
+      <h3 className="font-serif font-semibold text-ink mb-3">Ficha de controle (kardex) comparativa</h3>
+      <Card className="overflow-x-auto">
+        <div className="grid sm:grid-cols-3 gap-4">
+          <KardexColuna titulo="PEPS" k={peps} />
+          <KardexColuna titulo="UEPS" k={ueps} />
+          <KardexColuna titulo="Média Ponderada" k={mp} />
+        </div>
+      </Card>
+      <div className="text-xs text-inkSoft mt-3">
+        Os três métodos partem exatamente das mesmas movimentações — altere-as acima para ver o
+        impacto de cada critério no CMV e no estoque final em tempo real.
+      </div>
+    </div>
+  );
+}
+
+function GestaoIntroducaoView({ perfil, contas, estoqueMovs, salvarEstoqueMovs }) {
+  const [sub, setSub] = useState("principios");
+  return (
+    <div>
+      <SubNav itens={INTRO_SUBS} atual={sub} aoTrocar={setSub} />
+      {sub === "principios" && <IntroPrincipios />}
+      {sub === "classificacao" && <IntroClassificacao contas={contas} />}
+      {sub === "estruturabp" && <IntroEstruturaBP />}
+      {sub === "regimes" && <IntroRegimes />}
+      {sub === "estoque" && (
+        <IntroEstoque perfil={perfil} estoqueMovs={estoqueMovs} salvarEstoqueMovs={salvarEstoqueMovs} />
+      )}
+    </div>
+  );
+}
+
+// ---- Manual do Aluno ----
+
+const MANUAL_SUBS = [
+  { id: "inicio", label: "Primeiros Passos" },
+  { id: "lancar", label: "Como Lançar" },
+  { id: "relatoriosdica", label: "Entendendo os Relatórios" },
+  { id: "faq", label: "Perguntas Frequentes" },
+  { id: "glossario", label: "Glossário" },
+];
+
+function PassoManual({ n, titulo, children }) {
+  return (
+    <div className="flex gap-3 mb-3">
+      <div className="w-6 h-6 rounded-full bg-green text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
+        {n}
+      </div>
+      <div>
+        <div className="font-semibold text-ink text-sm">{titulo}</div>
+        <div className="text-sm text-inkSoft">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function ManualInicio() {
+  return (
+    <div>
+      <h3 className="font-serif font-semibold text-ink text-lg mb-1">Primeiros passos no sistema</h3>
+      <p className="text-sm text-inkSoft mb-4">Siga esta ordem na primeira vez que você usar o sistema.</p>
+      <Card>
+        <PassoManual n={1} titulo="Confira se sua turma já está cadastrada">
+          No módulo <b>Turmas</b>, veja se a sua já aparece na lista. Se não, peça ao professor
+          para cadastrá-la — não é possível criar um usuário sem escolher uma turma já existente.
+        </PassoManual>
+        <PassoManual n={2} titulo="Confira se você já está cadastrado">
+          No módulo <b>Usuários</b>, veja se seu nome já aparece na lista. Se não, cadastre-se
+          informando nome, e-mail, senha, perfil (Aluno) e a turma — ou peça ao professor para
+          cadastrá-lo.
+        </PassoManual>
+        <PassoManual n={3} titulo="Selecione a empresa ativa">
+          Nos módulos de Saldos, Lançamentos, Consulta por Conta, Balancete, DRE, Encerramento e
+          Balanço Patrimonial existe um seletor de <b>Empresa ativa</b> no topo. Confirme que está
+          correto antes de começar — tudo o que você fizer fica registrado nessa empresa.
+        </PassoManual>
+        <PassoManual n={4} titulo="Conheça o Plano de Contas">
+          Antes de lançar, dê uma olhada no módulo <b>Plano de Contas</b> para se familiarizar com
+          os códigos e nomes das contas que você vai usar com mais frequência.
+        </PassoManual>
+        <PassoManual n={5} titulo="Comece a lançar">
+          Vá para o módulo <b>Lançamentos</b> e registre os fatos contábeis do seu exercício, um
+          de cada vez, em partidas dobradas.
+        </PassoManual>
+        <PassoManual n={6} titulo="Acompanhe os relatórios">
+          Depois de lançar, confira o <b>Balancete</b> (deve fechar "OK"), a <b>DRE</b> e o{" "}
+          <b>Balanço Patrimonial</b>. Eles são calculados automaticamente, sem precisar de nenhum
+          botão de "atualizar".
+        </PassoManual>
+        <PassoManual n={7} titulo="Seus dados já ficam salvos na nuvem">
+          Diferente da versão antiga, agora tudo é sincronizado automaticamente pelo Firebase — não
+          é mais preciso baixar backup manual para não perder o trabalho.
+        </PassoManual>
+      </Card>
+      <div className="text-xs text-inkSoft mt-3">
+        <b>Sobre permissões:</b> como Aluno, algumas ações ficam bloqueadas por padrão — excluir
+        lançamentos, excluir empresas, entre outras. Isso é proposital, para evitar exclusões
+        acidentais. Se precisar de alguma dessas ações, peça a um usuário <b>Mestre</b> ou{" "}
+        <b>Professor</b> para liberá-la para você no módulo Usuários (botão "Permissões").
+      </div>
+    </div>
+  );
+}
+
+function ManualLancar() {
+  return (
+    <div>
+      <h3 className="font-serif font-semibold text-ink text-lg mb-1">Como registrar um lançamento</h3>
+      <p className="text-sm text-inkSoft mb-4">
+        Todo lançamento representa um fato contábil e sempre usa duas contas: uma a débito e uma a
+        crédito, no mesmo valor.
+      </p>
+      <Card>
+        <PassoManual n={1} titulo="Data">Informe a data em que o fato ocorreu (não precisa ser a data de hoje).</PassoManual>
+        <PassoManual n={2} titulo="Tipo de operação">
+          Campo opcional — hoje com "Compra" ou "Venda". Ao escolher, o campo Histórico é
+          preenchido automaticamente com uma sugestão (você pode editar o texto à vontade).
+        </PassoManual>
+        <PassoManual n={3} titulo="Histórico">
+          Descreva o fato em poucas palavras — ex.: "Venda de mercadorias à vista", "Pagamento de
+          aluguel do mês".
+        </PassoManual>
+        <PassoManual n={4} titulo="Conta débito e Conta crédito">
+          Digite o código ou nome da conta para filtrar a lista e escolha. Nunca use a mesma conta
+          nos dois campos.
+        </PassoManual>
+        <PassoManual n={5} titulo="Valor">Digite o valor da operação — ele será usado igualmente nas duas contas.</PassoManual>
+        <PassoManual n={6} titulo="Documento e Observações">
+          Campos opcionais, úteis para anotar o número da nota fiscal ou detalhes extras do
+          lançamento.
+        </PassoManual>
+        <PassoManual n={7} titulo="Adicionar lançamento">
+          Clique no botão — o lançamento aparece imediatamente no Livro Diário logo abaixo, e todos
+          os relatórios já são recalculados.
+        </PassoManual>
+      </Card>
+      <div className="text-xs text-inkSoft mt-3 space-y-2">
+        <p>
+          <b>Exemplo prático:</b> "Comprei mercadorias à vista por R$ 500" → Conta débito: 1.1.3.01
+          Mercadorias para Revenda · Conta crédito: 1.1.1.01 Caixa Geral · Valor: 500,00.
+        </p>
+        <p>
+          <b>Errou um lançamento?</b> Se você tiver permissão, clique em "Editar" na linha
+          correspondente do Livro Diário para corrigir os dados sem precisar excluir e lançar de
+          novo — ou em "Excluir", se preferir refazer do zero.
+        </p>
+        <p>
+          <b>Muitos lançamentos na lista?</b> Use a caixa de busca acima do Livro Diário para
+          filtrar por histórico, conta, documento ou observação, e o campo "Tipo" para ver só
+          Compras ou só Vendas.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function ManualRelatorios() {
+  const itens = [
+    ["Balancete", 'Lista o total de débitos, créditos e o saldo de cada conta movimentada. O rótulo no canto deve mostrar "Fechado" — se aparecer "Divergente", algum lançamento está com valores diferentes entre débito e crédito.'],
+    ["DRE", "Leia de cima para baixo: começa na Receita Bruta e vai subtraindo deduções, custos e despesas até chegar ao Resultado Líquido do Exercício (lucro ou prejuízo)."],
+    ["Encerramento (ARE)", "Mostra os totais de Receitas, Despesas e Custos do período e sugere os lançamentos de encerramento contra a conta 7.1.01."],
+    ["Balanço Patrimonial", 'Mostra Ativo de um lado e Passivo + Patrimônio Líquido do outro. O selo deve indicar "Fechado", confirmando que Ativo = Passivo + PL.'],
+    ["Consulta por Conta", "Escolha uma conta específica e veja todos os lançamentos que a afetaram, com o saldo acumulado após cada um — como um extrato bancário."],
+  ];
+  return (
+    <div>
+      <h3 className="font-serif font-semibold text-ink text-lg mb-4">Como ler os relatórios</h3>
+      <div className="grid sm:grid-cols-2 gap-3">
+        {itens.map(([t, d]) => (
+          <ConceptCard key={t} titulo={t}>{d}</ConceptCard>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ManualFaq() {
+  const faqs = [
+    ['Por que meu Balancete está "Divergente"?', 'Confira se em algum lançamento o valor foi digitado errado, ou se a conta de débito ficou igual à de crédito. Some manualmente a coluna "Total Débitos" e "Total Créditos" do Balancete para localizar a diferença.'],
+    ["Sumiram meus lançamentos!", "Agora os dados ficam salvos na nuvem (Firebase) e sincronizam entre dispositivos — se você está logado com a mesma conta, eles devem aparecer. Se o problema persistir, avise um usuário Mestre."],
+    ["Não encontro o botão para excluir um lançamento/empresa/usuário", 'Como Aluno, essas ações ficam bloqueadas por padrão para evitar exclusões acidentais. Peça a um usuário Mestre ou Professor para excluir o item, ou para liberar a permissão correspondente para você (módulo Usuários → botão "Permissões").'],
+    ["Minha turma não aparece na lista ao me cadastrar", "Só é possível vincular um usuário a uma turma já cadastrada. Peça a um Mestre ou Professor para cadastrá-la no módulo Turmas antes de você se registrar."],
+    ["Posso usar no celular?", 'Sim, o sistema se adapta a telas pequenas. Toque no botão "☰ Menu" para abrir a navegação lateral.'],
+    ["Preciso estar conectado à internet?", "Sim — como os dados agora ficam salvos na nuvem, é necessário estar conectado para lançar, consultar ou ver relatórios atualizados."],
+    ["Posso praticar em mais de uma empresa?", "Sim. Cadastre quantas empresas quiser no módulo Empresas — cada uma tem seu próprio Livro Diário e relatórios, totalmente separados."],
+  ];
+  return (
+    <div>
+      <h3 className="font-serif font-semibold text-ink text-lg mb-4">Perguntas frequentes</h3>
+      <div className="space-y-3">
+        {faqs.map(([q, a]) => (
+          <Card key={q}>
+            <h4 className="font-semibold text-ink text-sm mb-1">{q}</h4>
+            <p className="text-sm text-inkSoft">{a}</p>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ManualGlossario() {
+  const termos = [
+    ["Débito / Crédito", "Os dois lados de todo lançamento contábil. Não significam \"entrada\" ou \"saída\" de dinheiro — o efeito depende da natureza de cada conta."],
+    ["Partidas Dobradas", "Princípio pelo qual todo fato contábil afeta pelo menos duas contas, com o mesmo valor a débito e a crédito."],
+    ["Natureza da conta", "Lado (devedor ou credor) em que uma conta aumenta de saldo."],
+    ["Livro Diário", "Registro cronológico de todos os lançamentos contábeis."],
+    ["Razão", 'Agrupamento dos lançamentos por conta, mostrando o histórico e o saldo acumulado de cada uma — é o que o módulo "Consulta por Conta" apresenta.'],
+    ["Balancete de Verificação", "Lista de todas as contas com seus totais de débito, crédito e saldo, usada para conferir se os lançamentos estão equilibrados."],
+    ["Competência", "Regime que reconhece receitas e despesas no período em que ocorrem, independentemente do recebimento/pagamento."],
+    ["CMV", "Custo da Mercadoria Vendida — o custo de aquisição das mercadorias que foram vendidas no período."],
+    ["DRE", "Demonstração do Resultado do Exercício — relatório que apura o lucro ou prejuízo do período."],
+    ["ARE", "Apuração do Resultado do Exercício — conta usada para encerrar as contas de resultado ao final do período."],
+    ["Balanço Patrimonial", "Relatório que mostra a posição patrimonial (Ativo, Passivo e PL) da empresa em uma data específica."],
+    ["PEPS / UEPS / MP", "Critérios de avaliação de estoque: Primeiro que Entra Primeiro que Sai, Último que Entra Primeiro que Sai, e Média Ponderada Móvel."],
+    ["Turma", "Cadastro que agrupa os usuários (módulo Turmas). É obrigatório escolher uma turma já cadastrada ao criar um usuário."],
+    ["Mestre", "Perfil de usuário com acesso total ao sistema, responsável por liberar ou bloquear permissões para os demais usuários."],
+    ["Permissões", "Conjunto de ações que cada usuário pode ou não realizar — configuradas por um usuário Mestre no módulo Usuários."],
+  ];
+  return (
+    <div>
+      <h3 className="font-serif font-semibold text-ink text-lg mb-4">Glossário</h3>
+      <Card className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs text-inkSoft border-b border-line">
+              <th className="py-2 pr-3 w-56">Termo</th>
+              <th className="py-2 pr-3">Significado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {termos.map(([t, d]) => (
+              <tr key={t} className="border-b border-line/50">
+                <td className="py-1.5 pr-3 font-semibold text-ink whitespace-nowrap">{t}</td>
+                <td className="py-1.5 pr-3 text-inkSoft">{d}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+    </div>
+  );
+}
+
+function GestaoManualView() {
+  const [sub, setSub] = useState("inicio");
+  return (
+    <div>
+      <SubNav itens={MANUAL_SUBS} atual={sub} aoTrocar={setSub} />
+      {sub === "inicio" && <ManualInicio />}
+      {sub === "lancar" && <ManualLancar />}
+      {sub === "relatoriosdica" && <ManualRelatorios />}
+      {sub === "faq" && <ManualFaq />}
+      {sub === "glossario" && <ManualGlossario />}
+    </div>
+  );
+}
+
+// ============================================================================
 // GESTÃO — USUÁRIOS (e Aprovações)
 // ============================================================================
 
@@ -2589,6 +3384,10 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
     []
   );
 
+  // Movimentações de estoque (Fase 4 — Introdução à Contabilidade). Globais ao
+  // sistema, não por empresa: é um exercício comparativo de método de custeio.
+  const [estoqueMovs, salvarEstoqueMovs] = useSharedList("estoque_movs", []);
+
   const moduloFuturo = MODULOS_FUTUROS.find((m) => m.id === aba);
 
   const contagens = {
@@ -2689,6 +3488,15 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
           <GestaoBalancoView empresa={empresaAtiva} lancamentos={lancamentos} saldos={saldos} />
         </>
       )}
+      {aba === "introducao" && (
+        <GestaoIntroducaoView
+          perfil={perfil}
+          contas={contasAtivas}
+          estoqueMovs={estoqueMovs}
+          salvarEstoqueMovs={salvarEstoqueMovs}
+        />
+      )}
+      {aba === "manual" && <GestaoManualView />}
       {moduloFuturo && <ModuloEmBreve modulo={moduloFuturo} />}
     </Layout>
   );
