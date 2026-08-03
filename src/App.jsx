@@ -738,44 +738,48 @@ function Layout({ perfil, aba, setAba, children }) {
             <LayoutDashboard size={17} /> Início
           </button>
 
-          <div className="px-5 pt-4 pb-1 text-[11px] uppercase tracking-wide text-white/40">Gestão</div>
-          {GESTAO_ITENS.filter((item) => !(item.id === "usuarios" && perfil?.tipo === "Aluno")).map((item) => (
-            <button
-              key={item.id}
-              onClick={() => irPara(item.id)}
-              className={`w-full flex items-center gap-3 px-5 py-2.5 text-sm text-left hover:bg-white/10 ${
-                aba === item.id ? "bg-white/10 text-gold font-semibold" : "text-white/85"
-              }`}
-            >
-              <item.icon size={17} /> {item.label}
-            </button>
-          ))}
-          {pendentesVisiveis && (
-            <button
-              onClick={() => irPara("aprovacoes")}
-              className={`w-full flex items-center gap-3 px-5 py-2.5 text-sm text-left hover:bg-white/10 ${
-                aba === "aprovacoes" ? "bg-white/10 text-gold font-semibold" : "text-white/85"
-              }`}
-            >
-              <Crown size={17} /> Aprovações
-            </button>
+          {perfil?.tipo !== "Aluno" && (
+            <>
+              <div className="px-5 pt-4 pb-1 text-[11px] uppercase tracking-wide text-white/40">Gestão</div>
+              {GESTAO_ITENS.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => irPara(item.id)}
+                  className={`w-full flex items-center gap-3 px-5 py-2.5 text-sm text-left hover:bg-white/10 ${
+                    aba === item.id ? "bg-white/10 text-gold font-semibold" : "text-white/85"
+                  }`}
+                >
+                  <item.icon size={17} /> {item.label}
+                </button>
+              ))}
+              {pendentesVisiveis && (
+                <button
+                  onClick={() => irPara("aprovacoes")}
+                  className={`w-full flex items-center gap-3 px-5 py-2.5 text-sm text-left hover:bg-white/10 ${
+                    aba === "aprovacoes" ? "bg-white/10 text-gold font-semibold" : "text-white/85"
+                  }`}
+                >
+                  <Crown size={17} /> Aprovações
+                </button>
+              )}
+            </>
           )}
-
-          <div className="px-5 pt-4 pb-1 text-[11px] uppercase tracking-wide text-white/40">Ciclo Contábil</div>
-          {EMPRESA_ITENS.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => irPara(item.id)}
-              className={`w-full flex items-center gap-3 px-5 py-2.5 text-sm text-left hover:bg-white/10 ${
-                aba === item.id ? "bg-white/10 text-gold font-semibold" : "text-white/85"
-              }`}
-            >
-              <item.icon size={17} /> {item.label}
-            </button>
-          ))}
 
           <div className="px-5 pt-4 pb-1 text-[11px] uppercase tracking-wide text-white/40">Aprendizado</div>
           {APRENDIZADO_ITENS.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => irPara(item.id)}
+              className={`w-full flex items-center gap-3 px-5 py-2.5 text-sm text-left hover:bg-white/10 ${
+                aba === item.id ? "bg-white/10 text-gold font-semibold" : "text-white/85"
+              }`}
+            >
+              <item.icon size={17} /> {item.label}
+            </button>
+          ))}
+
+          <div className="px-5 pt-4 pb-1 text-[11px] uppercase tracking-wide text-white/40">Ciclo Contábil</div>
+          {EMPRESA_ITENS.map((item) => (
             <button
               key={item.id}
               onClick={() => irPara(item.id)}
@@ -848,6 +852,9 @@ function Layout({ perfil, aba, setAba, children }) {
 }
 
 function Capa({ perfil, setAba, contagens }) {
+  const souAluno = perfil?.tipo === "Aluno";
+  const cardsModulos = souAluno ? [...APRENDIZADO_ITENS, ...EMPRESA_ITENS] : GESTAO_ITENS;
+
   return (
     <div>
       <div className="mb-6">
@@ -863,29 +870,33 @@ function Capa({ perfil, setAba, contagens }) {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
-        <Card>
-          <div className="text-xs text-inkSoft">Turmas</div>
-          <div className="text-2xl font-serif font-semibold text-ink">{contagens.turmas}</div>
-        </Card>
-        <Card>
-          <div className="text-xs text-inkSoft">Empresas</div>
-          <div className="text-2xl font-serif font-semibold text-ink">{contagens.empresas}</div>
-        </Card>
-        <Card>
-          <div className="text-xs text-inkSoft">Usuários aprovados</div>
-          <div className="text-2xl font-serif font-semibold text-ink">{contagens.usuarios}</div>
-        </Card>
-        <Card>
-          <div className="text-xs text-inkSoft">Cadastros pendentes</div>
-          <div className="text-2xl font-serif font-semibold text-ink">{contagens.pendentes}</div>
-        </Card>
-      </div>
+      {!souAluno && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+          <Card>
+            <div className="text-xs text-inkSoft">Turmas</div>
+            <div className="text-2xl font-serif font-semibold text-ink">{contagens.turmas}</div>
+          </Card>
+          <Card>
+            <div className="text-xs text-inkSoft">Empresas</div>
+            <div className="text-2xl font-serif font-semibold text-ink">{contagens.empresas}</div>
+          </Card>
+          <Card>
+            <div className="text-xs text-inkSoft">Usuários aprovados</div>
+            <div className="text-2xl font-serif font-semibold text-ink">{contagens.usuarios}</div>
+          </Card>
+          <Card>
+            <div className="text-xs text-inkSoft">Cadastros pendentes</div>
+            <div className="text-2xl font-serif font-semibold text-ink">{contagens.pendentes}</div>
+          </Card>
+        </div>
+      )}
 
       <Card>
-        <h3 className="font-serif font-semibold text-ink mb-3">Módulos disponíveis nesta fase</h3>
+        <h3 className="font-serif font-semibold text-ink mb-3">
+          {souAluno ? "Seus módulos" : "Módulos disponíveis nesta fase"}
+        </h3>
         <div className="grid sm:grid-cols-3 gap-3">
-          {GESTAO_ITENS.filter((item) => !(item.id === "usuarios" && perfil?.tipo === "Aluno")).map((item) => (
+          {cardsModulos.map((item) => (
             <button
               key={item.id}
               onClick={() => setAba(item.id)}
