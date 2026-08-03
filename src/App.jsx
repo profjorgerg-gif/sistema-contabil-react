@@ -51,10 +51,6 @@ const PERMISSAO_LABELS = {
 
 // Módulos que ainda chegam nas próximas fases da migração (Fase 2 em diante).
 const MODULOS_FUTUROS = [
-  { id: "balancete", label: "Balancete de Verificação", icon: ClipboardList, fase: 3 },
-  { id: "dre", label: "DRE", icon: FileBarChart, fase: 3 },
-  { id: "encerramento", label: "Encerramento (ARE)", icon: History, fase: 3 },
-  { id: "balanco", label: "Balanço Patrimonial", icon: Landmark, fase: 3 },
   { id: "introducao", label: "Introdução à Contabilidade", icon: GraduationCap, fase: 4 },
   { id: "manual", label: "Manual do Aluno", icon: BookOpen, fase: 4 },
   { id: "relatorios", label: "Relatórios", icon: FileBarChart, fase: 5 },
@@ -73,6 +69,10 @@ const EMPRESA_ITENS = [
   { id: "saldos", label: "Saldos Iniciais", icon: Wallet },
   { id: "lancamentos", label: "Lançamentos", icon: ScrollText },
   { id: "razao", label: "Consulta por Conta", icon: Layers },
+  { id: "balancete", label: "Balancete de Verificação", icon: ClipboardList },
+  { id: "dre", label: "DRE", icon: FileBarChart },
+  { id: "encerramento", label: "Encerramento (ARE)", icon: History },
+  { id: "balanco", label: "Balanço Patrimonial", icon: Landmark },
 ];
 
 // ============================================================================
@@ -147,6 +147,63 @@ function saldoConta(lancamentos, saldos, codigo) {
     return cred >= deb ? { deb, cred, dev: 0, cre: cred - deb } : { deb, cred, dev: deb - cred, cre: 0 };
   }
   return deb >= cred ? { deb, cred, dev: deb - cred, cre: 0 } : { deb, cred, dev: 0, cre: cred - deb };
+}
+
+// ---- Totais por prefixo de código (Balancete, DRE, Encerramento, Balanço — Fase 3) ----
+function totalDebPrefix(lancamentos, codigo) {
+  return (lancamentos || []).reduce(
+    (s, l) => s + (l.contaDebito && l.contaDebito.startsWith(codigo + ".") ? Number(l.valor) : 0),
+    0
+  );
+}
+function totalCredPrefix(lancamentos, codigo) {
+  return (lancamentos || []).reduce(
+    (s, l) => s + (l.contaCredito && l.contaCredito.startsWith(codigo + ".") ? Number(l.valor) : 0),
+    0
+  );
+}
+function saldoInicialPrefixSide(saldos, prefixo, lado) {
+  let s = 0;
+  for (const cod in saldos || {}) {
+    if (cod.startsWith(prefixo + ".")) s += Number((saldos[cod] || {})[lado] || 0);
+  }
+  return s;
+}
+function debMinusCredPrefix(lancamentos, saldos, prefixo) {
+  const mov = totalDebPrefix(lancamentos, prefixo) - totalCredPrefix(lancamentos, prefixo);
+  const ini = saldoInicialPrefixSide(saldos, prefixo, "devedor") - saldoInicialPrefixSide(saldos, prefixo, "credor");
+  return mov + ini;
+}
+function credMinusDebPrefix(lancamentos, saldos, prefixo) {
+  const mov = totalCredPrefix(lancamentos, prefixo) - totalDebPrefix(lancamentos, prefixo);
+  const ini = saldoInicialPrefixSide(saldos, prefixo, "credor") - saldoInicialPrefixSide(saldos, prefixo, "devedor");
+  return mov + ini;
+}
+
+// DRE completa conforme a Lei nº 6.404/76 — mesma cadeia de cálculo do sistema original.
+function computeDRE(lancamentos, saldos) {
+  const receitaBruta = credMinusDebPrefix(lancamentos, saldos, "4.1.1");
+  const deducoes = credMinusDebPrefix(lancamentos, saldos, "4.2");
+  const receitaLiquida = receitaBruta + deducoes;
+  const cmv = -debMinusCredPrefix(lancamentos, saldos, "6.2");
+  const resultadoBruto = receitaLiquida + cmv;
+  const despAdm = -debMinusCredPrefix(lancamentos, saldos, "5.1");
+  const despCom = -debMinusCredPrefix(lancamentos, saldos, "5.2");
+  const outrasReceitasOp = credMinusDebPrefix(lancamentos, saldos, "4.4");
+  const resAntesFin = resultadoBruto + despAdm + despCom + outrasReceitasOp;
+  const receitasFin = credMinusDebPrefix(lancamentos, saldos, "4.3");
+  const despFin = -debMinusCredPrefix(lancamentos, saldos, "5.3");
+  const resOperacional = resAntesFin + receitasFin + despFin;
+  const ganhosCapital = credMinusDebPrefix(lancamentos, saldos, "4.5") + credMinusDebPrefix(lancamentos, saldos, "4.6");
+  const outrasDesp = -debMinusCredPrefix(lancamentos, saldos, "5.4");
+  const resAntesIRPJ = resOperacional + ganhosCapital + outrasDesp;
+  const provIRPJCSLL = -debMinusCredPrefix(lancamentos, saldos, "7.2");
+  const resultadoLiquido = resAntesIRPJ + provIRPJCSLL;
+  return {
+    receitaBruta, deducoes, receitaLiquida, cmv, resultadoBruto, despAdm, despCom, outrasReceitasOp,
+    resAntesFin, receitasFin, despFin, resOperacional, ganhosCapital, outrasDesp, resAntesIRPJ,
+    provIRPJCSLL, resultadoLiquido,
+  };
 }
 
 // ============================================================================
@@ -735,9 +792,9 @@ function Capa({ perfil, setAba, contagens }) {
         <h1 className="text-2xl font-serif font-semibold text-ink">Sistema de Escrituração Contábil</h1>
         <p className="text-sm text-inkSoft mt-1 max-w-2xl">
           Bem-vindo(a), {perfil?.nome}. A plataforma está em migração para React + Firebase — a fundação
-          (login, turmas, empresas e usuários) e o ciclo contábil básico (Plano de Contas, Saldos
-          Iniciais, Lançamentos e Consulta por Conta) já estão no ar e sincronizados em qualquer
-          dispositivo.
+          (login, turmas, empresas e usuários) e todo o ciclo contábil (Plano de Contas, Saldos
+          Iniciais, Lançamentos, Consulta por Conta, Balancete, DRE, Encerramento e Balanço
+          Patrimonial) já estão no ar e sincronizados em qualquer dispositivo.
         </p>
       </div>
 
@@ -775,8 +832,8 @@ function Capa({ perfil, setAba, contagens }) {
           ))}
         </div>
         <div className="text-xs text-inkSoft mt-4">
-          Os módulos de Balancete, DRE, Balanço Patrimonial e demais telas do ciclo contábil chegam
-          nas próximas fases da migração — já estão listados no menu como "em breve".
+          Introdução à Contabilidade, Manual do Aluno, Relatórios e Backup chegam nas próximas fases
+          da migração — já estão listados no menu como "em breve".
         </div>
       </Card>
     </div>
@@ -1690,6 +1747,308 @@ function GestaoConsultaView({ empresa, lancamentos, saldos }) {
 }
 
 // ============================================================================
+// FASE 3 — Balancete de Verificação, DRE, Encerramento (ARE) e Balanço
+// Patrimonial. Todos trabalham "dentro" da empresa ativa (mesmo padrão da
+// Fase 2) e são apurados em tempo real a partir de lançamentos + saldos.
+// ============================================================================
+
+function LinhaDRE({ label, valor, tom = "" }) {
+  const estilos = {
+    subtotal: "font-semibold border-t border-line pt-1.5 mt-1",
+    final: "font-bold border-t-2 border-ink pt-2 mt-2 text-base",
+    indent: "pl-4 text-inkSoft",
+  };
+  return (
+    <div className={`flex items-center justify-between py-0.5 text-sm ${estilos[tom] || ""}`}>
+      <span>{label}</span>
+      <span className="font-mono">{money(valor)}</span>
+    </div>
+  );
+}
+
+function LinhaBP({ label, valor, total }) {
+  return (
+    <div className={`flex items-center justify-between py-1 text-sm ${total ? "font-bold border-t-2 border-ink pt-2 mt-1" : ""}`}>
+      <span>{label}</span>
+      <span className="font-mono">{money(valor)}</span>
+    </div>
+  );
+}
+
+function SeloFechamento({ ok, rotulo, formula }) {
+  return (
+    <div
+      className={
+        "inline-flex flex-col items-center px-4 py-2 rounded-lg border mb-3 " +
+        (ok ? "border-green/40 bg-green/10 text-green" : "border-red/40 bg-red/10 text-red")
+      }
+    >
+      <span className="text-[10px] uppercase tracking-wide opacity-70">{rotulo}</span>
+      <span className="font-serif font-bold">{ok ? "Fechado" : "Divergente"}</span>
+      <span className="text-[10px] opacity-70">{ok ? formula : "verificar"}</span>
+    </div>
+  );
+}
+
+// ---- Balancete de Verificação ----
+
+function GestaoBalanceteView({ empresa, lancamentos, saldos }) {
+  if (!empresa) return <div className="text-sm text-inkSoft italic">Selecione uma empresa ativa acima.</div>;
+
+  let totDeb = 0, totCred = 0, totDev = 0, totCre = 0;
+  const linhas = LEAVES.map((c) => {
+    const s = saldoConta(lancamentos, saldos, c.codigo);
+    totDeb += s.deb; totCred += s.cred; totDev += s.dev; totCre += s.cre;
+    return { c, s };
+  }).filter((r) => r.s.deb !== 0 || r.s.cred !== 0);
+
+  const ok = Math.abs(totDeb - totCred) < 0.005;
+
+  return (
+    <div>
+      <SeloFechamento ok={ok} rotulo="Balancete" formula="D = C" />
+      <h2 className="text-lg font-serif font-semibold text-ink mb-1">Balancete de Verificação — {empresa.nome}</h2>
+      <p className="text-sm text-inkSoft mb-4">
+        Soma dos saldos iniciais com os lançamentos do período, por conta analítica. Somente contas
+        com movimento aparecem na lista.
+      </p>
+      <Card className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs text-inkSoft border-b border-line">
+              <th className="py-2 pr-3">Código</th>
+              <th className="py-2 pr-3">Conta</th>
+              <th className="py-2 pr-3">Natureza</th>
+              <th className="py-2 pr-3 text-right">Total Débitos</th>
+              <th className="py-2 pr-3 text-right">Total Créditos</th>
+              <th className="py-2 pr-3 text-right">Saldo Devedor</th>
+              <th className="py-2 pr-3 text-right">Saldo Credor</th>
+            </tr>
+          </thead>
+          <tbody>
+            {linhas.map(({ c, s }) => (
+              <tr key={c.codigo} className="border-b border-line/50">
+                <td className="py-1.5 pr-3 font-mono text-xs whitespace-nowrap">{c.codigo}</td>
+                <td className="py-1.5 pr-3">{c.nome}</td>
+                <td className="py-1.5 pr-3"><PillNatureza natureza={c.natureza} /></td>
+                <td className="py-1.5 pr-3 text-right">{numFmt(s.deb)}</td>
+                <td className="py-1.5 pr-3 text-right">{numFmt(s.cred)}</td>
+                <td className="py-1.5 pr-3 text-right">{s.dev ? numFmt(s.dev) : "—"}</td>
+                <td className="py-1.5 pr-3 text-right">{s.cre ? numFmt(s.cre) : "—"}</td>
+              </tr>
+            ))}
+            {linhas.length === 0 && (
+              <tr>
+                <td colSpan={7} className="py-4 text-center text-inkSoft italic">
+                  Nenhuma conta com movimento. Registre lançamentos ou saldos iniciais.
+                </td>
+              </tr>
+            )}
+          </tbody>
+          <tfoot>
+            <tr className="font-semibold">
+              <td colSpan={3} className="py-2 pr-3">TOTAIS</td>
+              <td className="py-2 pr-3 text-right">{numFmt(totDeb)}</td>
+              <td className="py-2 pr-3 text-right">{numFmt(totCred)}</td>
+              <td className="py-2 pr-3 text-right">{numFmt(totDev)}</td>
+              <td className="py-2 pr-3 text-right">{numFmt(totCre)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </Card>
+    </div>
+  );
+}
+
+// ---- DRE ----
+
+function GestaoDREView({ empresa, lancamentos, saldos }) {
+  if (!empresa) return <div className="text-sm text-inkSoft italic">Selecione uma empresa ativa acima.</div>;
+  const d = computeDRE(lancamentos, saldos);
+
+  return (
+    <div>
+      <h2 className="text-lg font-serif font-semibold text-ink mb-1">
+        Demonstração do Resultado do Exercício — {empresa.nome}
+      </h2>
+      <p className="text-sm text-inkSoft mb-4">
+        Estrutura conforme a Lei nº 6.404/76 e a NBC TG 26 — apurada em tempo real a partir dos
+        lançamentos e saldos iniciais desta empresa.
+      </p>
+      <Card>
+        <LinhaDRE label="Receita Bruta de Vendas e Serviços" valor={d.receitaBruta} tom="indent" />
+        <LinhaDRE label="(-) Deduções da Receita" valor={d.deducoes} tom="indent" />
+        <LinhaDRE label="(=) Receita Líquida" valor={d.receitaLiquida} tom="subtotal" />
+        <LinhaDRE label="(-) Custo das Mercadorias/Produtos/Serviços Vendidos" valor={d.cmv} tom="indent" />
+        <LinhaDRE label="(=) Resultado Bruto" valor={d.resultadoBruto} tom="subtotal" />
+        <LinhaDRE label="(-) Despesas Administrativas" valor={d.despAdm} tom="indent" />
+        <LinhaDRE label="(-) Despesas Comerciais" valor={d.despCom} tom="indent" />
+        <LinhaDRE label="(+) Outras Receitas Operacionais" valor={d.outrasReceitasOp} tom="indent" />
+        <LinhaDRE label="(=) Resultado Antes do Resultado Financeiro" valor={d.resAntesFin} tom="subtotal" />
+        <LinhaDRE label="(+) Receitas Financeiras" valor={d.receitasFin} tom="indent" />
+        <LinhaDRE label="(-) Despesas Financeiras" valor={d.despFin} tom="indent" />
+        <LinhaDRE label="(=) Resultado Operacional" valor={d.resOperacional} tom="subtotal" />
+        <LinhaDRE label="(+) Ganhos de Capital / Resultado de Investimentos" valor={d.ganhosCapital} tom="indent" />
+        <LinhaDRE label="(-) Outras Despesas" valor={d.outrasDesp} tom="indent" />
+        <LinhaDRE label="(=) Resultado Antes do IRPJ e da CSLL" valor={d.resAntesIRPJ} tom="subtotal" />
+        <LinhaDRE label="(-) Provisão para IRPJ e CSLL" valor={d.provIRPJCSLL} tom="indent" />
+        <LinhaDRE label="(=) RESULTADO LÍQUIDO DO EXERCÍCIO" valor={d.resultadoLiquido} tom="final" />
+      </Card>
+    </div>
+  );
+}
+
+// ---- Encerramento (ARE) ----
+
+function GestaoEncerramentoView({ empresa, lancamentos, saldos }) {
+  if (!empresa) return <div className="text-sm text-inkSoft italic">Selecione uma empresa ativa acima.</div>;
+
+  const totalReceitas = credMinusDebPrefix(lancamentos, saldos, "4");
+  const totalDespesas = debMinusCredPrefix(lancamentos, saldos, "5");
+  const totalCustos = debMinusCredPrefix(lancamentos, saldos, "6");
+  const resultado = totalReceitas - totalDespesas - totalCustos;
+  const lucro = resultado >= 0;
+
+  return (
+    <div>
+      <h2 className="text-lg font-serif font-semibold text-ink mb-1">
+        1) Totais apurados no período por grupo de resultado — {empresa.nome}
+      </h2>
+      <p className="text-sm text-inkSoft mb-4">
+        Esses totais são a base para o encerramento das contas de Receita, Despesa e Custo contra a
+        conta 7.1.01 (ARE — Apuração do Resultado do Exercício).
+      </p>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+        <Card>
+          <div className="text-xs text-inkSoft">Total de Receitas (grupo 4)</div>
+          <div className="font-serif font-semibold text-green">{money(totalReceitas)}</div>
+        </Card>
+        <Card>
+          <div className="text-xs text-inkSoft">Total de Despesas (grupo 5)</div>
+          <div className="font-serif font-semibold text-red">{money(totalDespesas)}</div>
+        </Card>
+        <Card>
+          <div className="text-xs text-inkSoft">Total de Custos (grupo 6)</div>
+          <div className="font-serif font-semibold text-red">{money(totalCustos)}</div>
+        </Card>
+        <Card>
+          <div className="text-xs text-inkSoft">Resultado do Exercício</div>
+          <div className={"font-serif font-semibold " + (lucro ? "text-green" : "text-red")}>{money(resultado)}</div>
+        </Card>
+      </div>
+
+      <Card className="overflow-x-auto mb-4">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs text-inkSoft border-b border-line">
+              <th className="py-2 pr-3">Conta Débito</th>
+              <th className="py-2 pr-3">Conta Crédito</th>
+              <th className="py-2 pr-3 text-right">Valor</th>
+              <th className="py-2 pr-3">Observação</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr className="border-b border-line/50">
+              <td className="py-1.5 pr-3 font-mono text-xs">contas 4.*</td>
+              <td className="py-1.5 pr-3 font-mono text-xs">7.1.01</td>
+              <td className="py-1.5 pr-3 text-right">{numFmt(totalReceitas)}</td>
+              <td className="py-1.5 pr-3">Encerramento das contas de Receita</td>
+            </tr>
+            <tr className="border-b border-line/50">
+              <td className="py-1.5 pr-3 font-mono text-xs">7.1.01</td>
+              <td className="py-1.5 pr-3 font-mono text-xs">contas 5.*</td>
+              <td className="py-1.5 pr-3 text-right">{numFmt(totalDespesas)}</td>
+              <td className="py-1.5 pr-3">Encerramento das contas de Despesa</td>
+            </tr>
+            <tr className="border-b border-line/50">
+              <td className="py-1.5 pr-3 font-mono text-xs">7.1.01</td>
+              <td className="py-1.5 pr-3 font-mono text-xs">contas 6.*</td>
+              <td className="py-1.5 pr-3 text-right">{numFmt(totalCustos)}</td>
+              <td className="py-1.5 pr-3">Encerramento das contas de Custo</td>
+            </tr>
+          </tbody>
+        </table>
+      </Card>
+
+      <h2 className="text-lg font-serif font-semibold text-ink mb-3">2) Destinação do resultado apurado</h2>
+      <Card className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs text-inkSoft border-b border-line">
+              <th className="py-2 pr-3">Conta Débito</th>
+              <th className="py-2 pr-3">Conta Crédito</th>
+              <th className="py-2 pr-3 text-right">Valor</th>
+              <th className="py-2 pr-3">Observação</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td className="py-1.5 pr-3 font-mono text-xs">{lucro ? "7.1.01" : "3.9"}</td>
+              <td className="py-1.5 pr-3 font-mono text-xs">{lucro ? "3.9" : "7.1.01"}</td>
+              <td className="py-1.5 pr-3 text-right">{numFmt(Math.abs(resultado))}</td>
+              <td className="py-1.5 pr-3">
+                {lucro
+                  ? "Lucro do período: debita ARE e credita Resultado do Exercício (PL)"
+                  : "Prejuízo do período: debita Resultado do Exercício (PL) e credita ARE"}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </Card>
+      <div className="text-xs text-inkSoft mt-3">
+        <b>Observação didática:</b> por simplicidade, este roteiro trabalha por totais de grupo. No
+        lançamento real, cada conta analítica de resultado deve ser encerrada individualmente contra
+        a 7.1.01 (ARE) — um lançamento por conta — antes do lançamento final de destinação. Use esses
+        valores como referência e pratique o encerramento conta a conta no módulo Lançamentos.
+      </div>
+    </div>
+  );
+}
+
+// ---- Balanço Patrimonial ----
+
+function GestaoBalancoView({ empresa, lancamentos, saldos }) {
+  if (!empresa) return <div className="text-sm text-inkSoft italic">Selecione uma empresa ativa acima.</div>;
+
+  const ativoCirc = debMinusCredPrefix(lancamentos, saldos, "1.1");
+  const ativoNaoCirc = debMinusCredPrefix(lancamentos, saldos, "1.2");
+  const totalAtivo = ativoCirc + ativoNaoCirc;
+  const passivoCirc = credMinusDebPrefix(lancamentos, saldos, "2.1");
+  const passivoNaoCirc = credMinusDebPrefix(lancamentos, saldos, "2.2");
+  const pl = credMinusDebPrefix(lancamentos, saldos, "3");
+  const resultadoDRE = computeDRE(lancamentos, saldos).resultadoLiquido;
+  const totalPassivoPL = passivoCirc + passivoNaoCirc + pl + resultadoDRE;
+  const ok = Math.abs(totalAtivo - totalPassivoPL) < 0.005;
+
+  return (
+    <div>
+      <SeloFechamento ok={ok} rotulo="Balanço" formula="A = P+PL" />
+      <h2 className="text-lg font-serif font-semibold text-ink mb-1">Balanço Patrimonial — {empresa.nome}</h2>
+      <p className="text-sm text-inkSoft mb-4">
+        Consolidado a partir dos saldos iniciais e dos lançamentos do período desta empresa.
+      </p>
+      <div className="grid sm:grid-cols-2 gap-4">
+        <Card>
+          <h3 className="font-serif font-semibold text-ink mb-2">ATIVO</h3>
+          <LinhaBP label="Ativo Circulante" valor={ativoCirc} />
+          <LinhaBP label="Ativo Não Circulante" valor={ativoNaoCirc} />
+          <LinhaBP label="TOTAL DO ATIVO" valor={totalAtivo} total />
+        </Card>
+        <Card>
+          <h3 className="font-serif font-semibold text-ink mb-2">PASSIVO + PATRIMÔNIO LÍQUIDO</h3>
+          <LinhaBP label="Passivo Circulante" valor={passivoCirc} />
+          <LinhaBP label="Passivo Não Circulante" valor={passivoNaoCirc} />
+          <LinhaBP label="Patrimônio Líquido" valor={pl} />
+          <LinhaBP label="Resultado Líquido do Exercício (DRE)" valor={resultadoDRE} />
+          <LinhaBP label="TOTAL DO PASSIVO + PL" valor={totalPassivoPL} total />
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
 // GESTÃO — USUÁRIOS (e Aprovações)
 // ============================================================================
 
@@ -1986,6 +2345,30 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
         <>
           <SeletorEmpresaAtiva empresas={empresas} empresaAtivaId={empresaAtivaId} setEmpresaAtivaId={setEmpresaAtivaId} />
           <GestaoConsultaView empresa={empresaAtiva} lancamentos={lancamentos} saldos={saldos} />
+        </>
+      )}
+      {aba === "balancete" && (
+        <>
+          <SeletorEmpresaAtiva empresas={empresas} empresaAtivaId={empresaAtivaId} setEmpresaAtivaId={setEmpresaAtivaId} />
+          <GestaoBalanceteView empresa={empresaAtiva} lancamentos={lancamentos} saldos={saldos} />
+        </>
+      )}
+      {aba === "dre" && (
+        <>
+          <SeletorEmpresaAtiva empresas={empresas} empresaAtivaId={empresaAtivaId} setEmpresaAtivaId={setEmpresaAtivaId} />
+          <GestaoDREView empresa={empresaAtiva} lancamentos={lancamentos} saldos={saldos} />
+        </>
+      )}
+      {aba === "encerramento" && (
+        <>
+          <SeletorEmpresaAtiva empresas={empresas} empresaAtivaId={empresaAtivaId} setEmpresaAtivaId={setEmpresaAtivaId} />
+          <GestaoEncerramentoView empresa={empresaAtiva} lancamentos={lancamentos} saldos={saldos} />
+        </>
+      )}
+      {aba === "balanco" && (
+        <>
+          <SeletorEmpresaAtiva empresas={empresas} empresaAtivaId={empresaAtivaId} setEmpresaAtivaId={setEmpresaAtivaId} />
+          <GestaoBalancoView empresa={empresaAtiva} lancamentos={lancamentos} saldos={saldos} />
         </>
       )}
       {moduloFuturo && <ModuloEmBreve modulo={moduloFuturo} />}
