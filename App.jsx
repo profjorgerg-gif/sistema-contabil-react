@@ -3135,6 +3135,46 @@ function IlustracaoLancamento() {
 }
 
 // Mockup do seletor de Empresa ativa — acompanha o passo 3 dos Primeiros Passos.
+// Mockup da tela de Login — E-mail, Senha e botão Entrar.
+function IlustracaoLogin() {
+  return (
+    <div className="border-2 border-dashed border-line rounded-xl p-4 bg-white mb-4 max-w-xs">
+      <div className="space-y-3">
+        <CampoIlustrado n={1} label="E-mail" valor="voce@exemplo.com" />
+        <CampoIlustrado n={2} label="Senha" valor="•••••••••" />
+        <div className="relative">
+          <NumBadge n={3} />
+          <div className="bg-green text-white text-sm font-semibold px-4 py-2 rounded-lg text-center">Entrar</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Mockup da tela de Cadastro (Criar conta) — mesmos campos e ordem da tela real.
+function IlustracaoCadastro() {
+  return (
+    <div className="border-2 border-dashed border-line rounded-xl p-4 bg-white mb-4">
+      <div className="space-y-3">
+        <CampoIlustrado n={1} label="Nome completo" valor="Maria Oliveira" />
+        <div className="grid sm:grid-cols-2 gap-3">
+          <CampoIlustrado n={2} label="E-mail" valor="maria@exemplo.com" />
+          <CampoIlustrado n={3} label="Senha / Confirmar senha" valor="•••••••••" />
+        </div>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <CampoIlustrado n={4} label="Você é" valor="Aluno" />
+          <CampoIlustrado n={5} label="Turma" valor="— Selecione —" />
+        </div>
+        <CampoIlustrado n={6} label="Código de Mestre (opcional)" valor="" />
+        <div className="relative inline-block">
+          <NumBadge n={7} />
+          <div className="bg-green text-white text-sm font-semibold px-4 py-2 rounded-lg">Criar conta</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function IlustracaoEmpresaAtiva() {
   return (
     <div className="border-2 border-dashed border-line rounded-xl p-4 bg-white mb-4 max-w-md">
@@ -3166,6 +3206,24 @@ function ManualInicio() {
     <div>
       <h3 className="font-serif font-semibold text-ink text-lg mb-1">Primeiros passos no sistema</h3>
       <p className="text-sm text-inkSoft mb-4">Siga esta ordem na primeira vez que você usar o sistema.</p>
+
+      <h4 className="font-semibold text-ink text-sm mb-1">Tela de entrada (Login)</h4>
+      <p className="text-sm text-inkSoft mb-3">
+        Se você já tem conta aprovada, entre com seu e-mail e senha cadastrados. Esqueceu a senha?
+        Use o link "Esqueci minha senha" logo abaixo do botão Entrar.
+      </p>
+      <IlustracaoLogin />
+
+      <h4 className="font-semibold text-ink text-sm mb-1">Tela de cadastro (Criar conta)</h4>
+      <p className="text-sm text-inkSoft mb-3">
+        Ainda não tem conta? Clique em "Ainda não tenho conta — cadastrar", na tela de login, e
+        preencha os campos abaixo. Como Aluno, a Turma é obrigatória — se ela ainda não aparecer na
+        lista, peça ao professor(a) para cadastrá-la antes. Depois de se cadastrar, um usuário{" "}
+        <b>Mestre</b> ou <b>Professor</b> precisa <b>aprovar</b> sua conta antes de você conseguir
+        entrar.
+      </p>
+      <IlustracaoCadastro />
+
       <IlustracaoEmpresaAtiva />
       <Card>
         <PassoManual n={1} titulo="Confira se sua turma já está cadastrada">
