@@ -15,7 +15,7 @@ import { auth } from "./firebaseConfig";
 // texto/grupo aberto — o repositório no GitHub é público (ver Seção 8 do
 // manual de operacionalização).
 // ============================================================================
-export const CODIGO_MESTRE = "TROCAR-ESTE-CODIGO-2026";
+export const CODIGO_MESTRE = "CEDUP-TGVQ-XJ66-DMY9";
 
 export function observarSessao(callback) {
   return onAuthStateChanged(auth, callback);
