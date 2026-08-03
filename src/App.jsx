@@ -50,10 +50,9 @@ const PERMISSAO_LABELS = {
 };
 
 // Módulos que ainda chegam nas próximas fases da migração (Fase 2 em diante).
-const MODULOS_FUTUROS = [
-  { id: "relatorios", label: "Relatórios", icon: FileBarChart, fase: 5 },
-  { id: "backup", label: "Backup", icon: Save, fase: 5 },
-];
+// Todas as fases da migração já foram implementadas — array mantido vazio
+// (em vez de removido) para não quebrar o restante do código que o referencia.
+const MODULOS_FUTUROS = [];
 
 const GESTAO_ITENS = [
   { id: "turmas", label: "Turmas", icon: School },
@@ -71,6 +70,7 @@ const EMPRESA_ITENS = [
   { id: "dre", label: "DRE", icon: FileBarChart },
   { id: "encerramento", label: "Encerramento (ARE)", icon: History },
   { id: "balanco", label: "Balanço Patrimonial", icon: Landmark },
+  { id: "relatorios", label: "Relatórios", icon: FileBarChart },
 ];
 
 // Conteúdo de apoio didático (Fase 4) — não depende de empresa ativa.
@@ -88,6 +88,27 @@ const uid = (prefixo) => prefixo + Date.now().toString(36) + Math.random().toStr
 function fmtDateTime(ts) {
   if (!ts) return "—";
   return new Date(ts).toLocaleString("pt-BR");
+}
+
+// ---- Exportação CSV (Fase 5 — Relatórios e Auditoria) ----
+function slug(s) {
+  return String(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9]+/g, "_").toLowerCase();
+}
+function csvEscape(v) {
+  const s = String(v == null ? "" : v).replace(/"/g, '""');
+  return /[;"\n]/.test(s) ? `"${s}"` : s;
+}
+function downloadCSV(filename, rows) {
+  const csv = "\uFEFF" + rows.map((r) => r.map(csvEscape).join(";")).join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 function calcularDVCNPJ(digitos, pesos) {
@@ -765,9 +786,35 @@ function Layout({ perfil, aba, setAba, children }) {
             </button>
           ))}
 
-          <div className="px-5 pt-4 pb-1 text-[11px] uppercase tracking-wide text-white/40">
-            Módulos (próximas fases)
-          </div>
+          {(temPermissao("verAuditoria") || perfil?.tipo === "Mestre" || perfil?.tipo === "Professor") && (
+            <div className="px-5 pt-4 pb-1 text-[11px] uppercase tracking-wide text-white/40">Sistema</div>
+          )}
+          {temPermissao("verAuditoria") && (
+            <button
+              onClick={() => irPara("auditoria")}
+              className={`w-full flex items-center gap-3 px-5 py-2.5 text-sm text-left hover:bg-white/10 ${
+                aba === "auditoria" ? "bg-white/10 text-gold font-semibold" : "text-white/85"
+              }`}
+            >
+              <Eye size={17} /> Auditoria
+            </button>
+          )}
+          {(perfil?.tipo === "Mestre" || perfil?.tipo === "Professor") && (
+            <button
+              onClick={() => irPara("backup")}
+              className={`w-full flex items-center gap-3 px-5 py-2.5 text-sm text-left hover:bg-white/10 ${
+                aba === "backup" ? "bg-white/10 text-gold font-semibold" : "text-white/85"
+              }`}
+            >
+              <Save size={17} /> Backup
+            </button>
+          )}
+
+          {MODULOS_FUTUROS.length > 0 && (
+            <div className="px-5 pt-4 pb-1 text-[11px] uppercase tracking-wide text-white/40">
+              Módulos (próximas fases)
+            </div>
+          )}
           {MODULOS_FUTUROS.map((item) => (
             <button
               key={item.id}
@@ -874,24 +921,28 @@ function ModuloEmBreve({ modulo }) {
 // GESTÃO — TURMAS
 // ============================================================================
 
-function GestaoTurmasView({ perfil, turmas, salvarTurmas, recarregarTurmas, usuarios }) {
+function GestaoTurmasView({ perfil, turmas, salvarTurmas, recarregarTurmas, usuarios, recarregarUsuarios, registrarAuditoria }) {
   const [novoNome, setNovoNome] = useState("");
   const [editandoId, setEditandoId] = useState(null);
   const [nomeEdicao, setNomeEdicao] = useState("");
   const podeGerenciar = !!perfil?.permissoes?.gerenciarTurmas;
   const souAluno = perfil?.tipo === "Aluno";
+  const souMestre = perfil?.tipo === "Mestre";
   const turmasVisiveis = souAluno ? (turmas || []).filter((t) => t.id === perfil?.turmaId) : turmas || [];
 
   const criar = async () => {
     if (!novoNome.trim()) return;
     const nova = { id: uid("t"), nome: novoNome.trim(), criadoEm: Date.now() };
     await salvarTurmas([...(turmas || []), nova]);
+    await registrarAuditoria("criar", "turma", `Criou a turma "${nova.nome}"`);
     setNovoNome("");
   };
 
   const salvarEdicao = async (id) => {
     if (!nomeEdicao.trim()) return;
+    const antiga = (turmas || []).find((t) => t.id === id);
     await salvarTurmas((turmas || []).map((t) => (t.id === id ? { ...t, nome: nomeEdicao.trim() } : t)));
+    await registrarAuditoria("editar", "turma", `Renomeou a turma "${antiga?.nome}" para "${nomeEdicao.trim()}"`);
     setEditandoId(null);
   };
 
@@ -899,12 +950,36 @@ function GestaoTurmasView({ perfil, turmas, salvarTurmas, recarregarTurmas, usua
     const emUso = (usuarios || []).filter((u) => u.turmaId === turma.id);
     if (emUso.length) {
       alert(
-        `Não é possível excluir esta turma: ${emUso.length} usuário(s) ainda estão vinculados a ela. Mude a turma desses usuários primeiro (no módulo Usuários) antes de excluir a turma.`
+        `Não é possível excluir esta turma: ${emUso.length} usuário(s) ainda estão vinculados a ela. Mude a turma desses usuários primeiro (no módulo Usuários), ou use a Zona de Perigo abaixo (só Mestre) para excluir e desvincular tudo de uma vez.`
       );
       return;
     }
     if (!confirm(`Excluir a turma "${turma.nome}"? Essa ação não pode ser desfeita.`)) return;
     await salvarTurmas((turmas || []).filter((t) => t.id !== turma.id));
+    await registrarAuditoria("excluir", "turma", `Excluiu a turma "${turma.nome}"`);
+  };
+
+  // Zona de perigo (só Mestre): exclui a turma e desvincula todos os usuários
+  // dela de uma vez (eles continuam existindo, só ficam sem turma vinculada —
+  // nenhuma conta é apagada, para não travar o login de ninguém).
+  const excluirComCascata = async (turma) => {
+    const vinculados = (usuarios || []).filter((u) => u.turmaId === turma.id);
+    const digitado = prompt(
+      `Isso vai excluir a turma "${turma.nome}" e desvincular ${vinculados.length} usuário(s) dela (eles continuam existindo, só ficam sem turma). Para confirmar, digite o nome EXATO da turma:`
+    );
+    if (digitado === null) return;
+    if (digitado.trim() !== turma.nome) {
+      alert("O nome digitado não confere com o nome da turma. Nada foi excluído.");
+      return;
+    }
+    await Promise.all(vinculados.map((u) => atualizarUsuario(u.uid, { turmaId: null })));
+    await salvarTurmas((turmas || []).filter((t) => t.id !== turma.id));
+    await registrarAuditoria(
+      "excluir",
+      "turma",
+      `Excluiu a turma "${turma.nome}" em cascata, desvinculando ${vinculados.length} usuário(s)`
+    );
+    recarregarUsuarios();
   };
 
   return (
@@ -940,45 +1015,57 @@ function GestaoTurmasView({ perfil, turmas, salvarTurmas, recarregarTurmas, usua
       )}
 
       <div className="space-y-2">
-        {turmasVisiveis.map((t) => (
-          <Card key={t.id} className="flex items-center justify-between gap-3">
-            {editandoId === t.id ? (
-              <div className="flex-1 flex gap-2">
-                <TxtInput value={nomeEdicao} onChange={(e) => setNomeEdicao(e.target.value)} />
-                <Botao onClick={() => salvarEdicao(t.id)}>Salvar</Botao>
-                <Botao variant="ghost" onClick={() => setEditandoId(null)}>
-                  Cancelar
-                </Botao>
-              </div>
-            ) : (
-              <>
-                <div>
-                  <div className="font-semibold text-ink text-sm">{t.nome}</div>
-                  <div className="text-xs text-inkSoft">
-                    {(usuarios || []).filter((u) => u.turmaId === t.id).length} usuário(s) vinculado(s)
-                  </div>
+        {turmasVisiveis.map((t) => {
+          const vinculados = (usuarios || []).filter((u) => u.turmaId === t.id).length;
+          return (
+            <Card key={t.id} className="flex items-center justify-between gap-3">
+              {editandoId === t.id ? (
+                <div className="flex-1 flex gap-2">
+                  <TxtInput value={nomeEdicao} onChange={(e) => setNomeEdicao(e.target.value)} />
+                  <Botao onClick={() => salvarEdicao(t.id)}>Salvar</Botao>
+                  <Botao variant="ghost" onClick={() => setEditandoId(null)}>
+                    Cancelar
+                  </Botao>
                 </div>
-                {podeGerenciar && (
-                  <div className="flex gap-2 shrink-0">
-                    <button
-                      onClick={() => {
-                        setEditandoId(t.id);
-                        setNomeEdicao(t.nome);
-                      }}
-                      className="text-inkSoft hover:text-ink"
-                      title="Renomear"
-                    >
-                      <Pencil size={16} />
-                    </button>
-                    <button onClick={() => excluir(t)} className="text-red hover:opacity-70" title="Excluir">
-                      <Trash2 size={16} />
-                    </button>
+              ) : (
+                <>
+                  <div>
+                    <div className="font-semibold text-ink text-sm">{t.nome}</div>
+                    <div className="text-xs text-inkSoft">{vinculados} usuário(s) vinculado(s)</div>
                   </div>
-                )}
-              </>
-            )}
-          </Card>
-        ))}
+                  <div className="flex items-center gap-3 shrink-0">
+                    {souMestre && vinculados > 0 && (
+                      <button
+                        onClick={() => excluirComCascata(t)}
+                        className="text-xs text-red underline decoration-dotted hover:opacity-70"
+                        title="Zona de perigo: excluir e desvincular usuários"
+                      >
+                        Excluir e desvincular
+                      </button>
+                    )}
+                    {podeGerenciar && (
+                      <div className="flex gap-2 shrink-0">
+                        <button
+                          onClick={() => {
+                            setEditandoId(t.id);
+                            setNomeEdicao(t.nome);
+                          }}
+                          className="text-inkSoft hover:text-ink"
+                          title="Renomear"
+                        >
+                          <Pencil size={16} />
+                        </button>
+                        <button onClick={() => excluir(t)} className="text-red hover:opacity-70" title="Excluir">
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </Card>
+          );
+        })}
         {turmas && turmasVisiveis.length === 0 && (
           <div className="text-sm text-inkSoft italic">Nenhuma turma cadastrada ainda.</div>
         )}
@@ -991,7 +1078,7 @@ function GestaoTurmasView({ perfil, turmas, salvarTurmas, recarregarTurmas, usua
 // GESTÃO — EMPRESAS
 // ============================================================================
 
-function GestaoEmpresasView({ perfil, empresas, salvarEmpresas, usuarios }) {
+function GestaoEmpresasView({ perfil, empresas, salvarEmpresas, usuarios, registrarAuditoria }) {
   const podeExcluir = !!perfil?.permissoes?.excluirEmpresas;
   const podeGerenciar = !!perfil?.permissoes?.gerenciarTurmas; // mesma permissão usada em Turmas
   const souAluno = perfil?.tipo === "Aluno";
@@ -1013,8 +1100,10 @@ function GestaoEmpresasView({ perfil, empresas, salvarEmpresas, usuarios }) {
     const dados = { ...form, alunoId: form.alunoId || null };
     if (editandoId) {
       await salvarEmpresas((empresas || []).map((em) => (em.id === editandoId ? { ...em, ...dados } : em)));
+      await registrarAuditoria("editar", "empresa", `Editou a empresa "${dados.nome}"`);
     } else {
       await salvarEmpresas([...(empresas || []), { id: uid("e"), ...dados }]);
+      await registrarAuditoria("criar", "empresa", `Criou a empresa "${dados.nome}"${dados.alunoId ? ` (vinculada a ${alunoNome(dados.alunoId)})` : ""}`);
     }
     setForm(formVazio());
     setEditandoId(null);
@@ -1038,6 +1127,7 @@ function GestaoEmpresasView({ perfil, empresas, salvarEmpresas, usuarios }) {
     }
     if (!confirm(`Excluir a empresa "${em.nome}"? Esta ação não pode ser desfeita.`)) return;
     await salvarEmpresas((empresas || []).filter((x) => x.id !== em.id));
+    await registrarAuditoria("excluir", "empresa", `Excluiu a empresa "${em.nome}"`);
   };
 
   return (
@@ -1587,7 +1677,7 @@ function GestaoPlanoContasView({ perfil, contas, salvarPlanoContas, auditoria, r
 
 // ---- Saldos Iniciais (por empresa ativa) ----
 
-function GestaoSaldosView({ empresa, saldos, salvarSaldos, leaves }) {
+function GestaoSaldosView({ empresa, saldos, salvarSaldos, leaves, registrarAuditoria }) {
   const [filtro, setFiltro] = useState("");
   const [rascunho, setRascunho] = useState(saldos || {});
 
@@ -1618,6 +1708,7 @@ function GestaoSaldosView({ empresa, saldos, salvarSaldos, leaves }) {
 
   const salvar = async () => {
     await salvarSaldos(rascunho);
+    await registrarAuditoria("editar", "saldoInicial", `Atualizou os saldos iniciais da empresa "${empresa.nome}"`);
     alert("Saldos iniciais salvos.");
   };
 
@@ -1717,7 +1808,7 @@ function GestaoSaldosView({ empresa, saldos, salvarSaldos, leaves }) {
 
 // ---- Lançamentos (Livro Diário — por empresa ativa) ----
 
-function GestaoLancamentosView({ empresa, perfil, lancamentos, salvarLancamentos, leaves, contaByCode }) {
+function GestaoLancamentosView({ empresa, perfil, lancamentos, salvarLancamentos, leaves, contaByCode, registrarAuditoria }) {
   const podeExcluir = !!perfil?.permissoes?.excluirLancamentos;
 
   const formVazio = () => ({
@@ -1787,6 +1878,11 @@ function GestaoLancamentosView({ empresa, perfil, lancamentos, salvarLancamentos
     }
     if (!confirm(`Excluir o lançamento "${l.historico}"? Esta ação não pode ser desfeita.`)) return;
     await salvarLancamentos(lanc.filter((x) => x.id !== l.id));
+    await registrarAuditoria(
+      "excluir",
+      "lancamento",
+      `Excluiu lançamento na empresa "${empresa.nome}": "${l.historico}" — ${money(l.valor)} (Déb: ${l.contaDebito} / Créd: ${l.contaCredito})`
+    );
     if (editandoId === l.id) cancelar();
   };
 
@@ -1804,8 +1900,18 @@ function GestaoLancamentosView({ empresa, perfil, lancamentos, salvarLancamentos
     const dados = { ...form, valor: Number(form.valor), tipoOperacao: form.tipoOperacao || undefined };
     if (editandoId) {
       await salvarLancamentos(lanc.map((l) => (l.id === editandoId ? { ...l, ...dados } : l)));
+      await registrarAuditoria(
+        "editar",
+        "lancamento",
+        `Editou lançamento na empresa "${empresa.nome}": "${dados.historico}" — ${money(dados.valor)} (Déb: ${dados.contaDebito} / Créd: ${dados.contaCredito})`
+      );
     } else {
       await salvarLancamentos([...lanc, { id: uid("l"), usuarioId: perfil?.uid, ...dados }]);
+      await registrarAuditoria(
+        "criar",
+        "lancamento",
+        `Lançou na empresa "${empresa.nome}": "${dados.historico}" — ${money(dados.valor)} (Déb: ${dados.contaDebito} / Créd: ${dados.contaCredito})`
+      );
     }
     cancelar();
   };
@@ -2796,7 +2902,7 @@ function KardexColuna({ titulo, k }) {
   );
 }
 
-function IntroEstoque({ perfil, estoqueMovs, salvarEstoqueMovs }) {
+function IntroEstoque({ perfil, estoqueMovs, salvarEstoqueMovs, registrarAuditoria }) {
   const podeExcluir = !!perfil?.permissoes?.excluirLancamentos;
   const movs = estoqueMovs || [];
   const [form, setForm] = useState({ data: new Date().toISOString().slice(0, 10), tipo: "Entrada", quantidade: "", valorUnit: "" });
@@ -2824,11 +2930,14 @@ function IntroEstoque({ perfil, estoqueMovs, salvarEstoqueMovs }) {
       valorUnit: form.tipo === "Entrada" ? Number(form.valorUnit) : undefined,
     };
     await salvarEstoqueMovs([...movs, novoMov]);
+    await registrarAuditoria("criar", "estoque", `Registrou movimentação de estoque: ${form.tipo} de ${quantidade} unidade(s)`);
     setForm({ data: new Date().toISOString().slice(0, 10), tipo: form.tipo, quantidade: "", valorUnit: "" });
   };
 
   const carregarExemplo = async () => {
-    await salvarEstoqueMovs([...movs, ...seedEstoqueMovs()]);
+    const novos = seedEstoqueMovs();
+    await salvarEstoqueMovs([...movs, ...novos]);
+    await registrarAuditoria("criar", "estoque", `Carregou ${novos.length} movimentações de estoque de exemplo`);
   };
 
   const limparTudo = async () => {
@@ -2838,6 +2947,7 @@ function IntroEstoque({ perfil, estoqueMovs, salvarEstoqueMovs }) {
     }
     if (!confirm("Excluir todas as movimentações de estoque cadastradas?")) return;
     await salvarEstoqueMovs([]);
+    await registrarAuditoria("excluir", "estoque", `Excluiu TODAS as ${movs.length} movimentações de estoque`);
   };
 
   return (
@@ -2924,7 +3034,7 @@ function IntroEstoque({ perfil, estoqueMovs, salvarEstoqueMovs }) {
   );
 }
 
-function GestaoIntroducaoView({ perfil, contas, estoqueMovs, salvarEstoqueMovs }) {
+function GestaoIntroducaoView({ perfil, contas, estoqueMovs, salvarEstoqueMovs, registrarAuditoria }) {
   const [sub, setSub] = useState("principios");
   return (
     <div>
@@ -2934,7 +3044,7 @@ function GestaoIntroducaoView({ perfil, contas, estoqueMovs, salvarEstoqueMovs }
       {sub === "estruturabp" && <IntroEstruturaBP />}
       {sub === "regimes" && <IntroRegimes />}
       {sub === "estoque" && (
-        <IntroEstoque perfil={perfil} estoqueMovs={estoqueMovs} salvarEstoqueMovs={salvarEstoqueMovs} />
+        <IntroEstoque perfil={perfil} estoqueMovs={estoqueMovs} salvarEstoqueMovs={salvarEstoqueMovs} registrarAuditoria={registrarAuditoria} />
       )}
     </div>
   );
@@ -3167,6 +3277,509 @@ function GestaoManualView() {
 }
 
 // ============================================================================
+// FASE 5 — Auditoria, Relatórios e Backup. Fecha o plano de migração.
+// ============================================================================
+
+function AcaoPill({ acao }) {
+  const tons = { criar: "green", editar: "gold", excluir: "red" };
+  const labels = { criar: "Criação", editar: "Edição", excluir: "Exclusão" };
+  return <Pill tone={tons[acao] || "green"}>{labels[acao] || acao}</Pill>;
+}
+
+// ---- Auditoria ----
+
+function GestaoAuditoriaView({ perfil, auditoria }) {
+  const podeVer = !!perfil?.permissoes?.verAuditoria;
+  const [filtroUsuario, setFiltroUsuario] = useState("");
+  const [filtroEntidade, setFiltroEntidade] = useState("");
+  const [filtroAcao, setFiltroAcao] = useState("");
+
+  if (!podeVer) {
+    return (
+      <div className="text-sm text-inkSoft italic">
+        Você não tem permissão para ver o log de Auditoria. Peça a um usuário <b>Mestre</b> ou{" "}
+        <b>Professor</b> para consultar ou liberar essa permissão para você.
+      </div>
+    );
+  }
+
+  const log = auditoria || [];
+  const usuariosNoLog = [...new Set(log.map((l) => l.usuarioNome))].filter(Boolean).sort();
+  const entidadesNoLog = [...new Set(log.map((l) => l.entidade))].filter(Boolean).sort();
+
+  const linhas = log
+    .filter((l) => !filtroUsuario || l.usuarioNome === filtroUsuario)
+    .filter((l) => !filtroEntidade || l.entidade === filtroEntidade)
+    .filter((l) => !filtroAcao || l.acao === filtroAcao)
+    .slice()
+    .sort((a, b) => b.timestamp - a.timestamp);
+
+  const nExclusoes = log.filter((l) => l.acao === "excluir").length;
+
+  const exportarCSV = () => {
+    const linhasCSV = [["Data/Hora", "Usuário", "Entidade", "Ação", "Descrição"]];
+    log
+      .slice()
+      .sort((a, b) => a.timestamp - b.timestamp)
+      .forEach((l) => linhasCSV.push([fmtDateTime(l.timestamp), l.usuarioNome || "", l.entidade, l.acao, l.descricao]));
+    downloadCSV(`log_auditoria_${new Date().toISOString().slice(0, 10)}.csv`, linhasCSV);
+  };
+
+  return (
+    <div>
+      <h2 className="text-lg font-serif font-semibold text-ink mb-1">Auditoria</h2>
+      <p className="text-sm text-inkSoft mb-4">
+        Todo cadastro, edição ou exclusão feito no sistema fica registrado aqui automaticamente, com
+        data/hora, usuário e descrição — e não pode ser apagado pela interface.
+      </p>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+        <Card><div className="text-xs text-inkSoft">Total de registros</div><div className="text-xl font-serif font-semibold text-ink">{log.length}</div></Card>
+        <Card><div className="text-xs text-inkSoft">Exclusões registradas</div><div className={"text-xl font-serif font-semibold " + (nExclusoes ? "text-red" : "text-ink")}>{nExclusoes}</div></Card>
+        <Card><div className="text-xs text-inkSoft">Usuários com atividade</div><div className="text-xl font-serif font-semibold text-ink">{usuariosNoLog.length}</div></Card>
+        <Card><div className="text-xs text-inkSoft">Tipos de registro</div><div className="text-xl font-serif font-semibold text-ink">{entidadesNoLog.length}</div></Card>
+      </div>
+
+      <Card className="mb-4">
+        <div className="flex flex-wrap gap-2">
+          <SelectInput value={filtroUsuario} onChange={(e) => setFiltroUsuario(e.target.value)} className="sm:max-w-[200px]">
+            <option value="">Todos os usuários</option>
+            {usuariosNoLog.map((n) => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </SelectInput>
+          <SelectInput value={filtroEntidade} onChange={(e) => setFiltroEntidade(e.target.value)} className="sm:max-w-[180px]">
+            <option value="">Todos os tipos</option>
+            {entidadesNoLog.map((n) => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </SelectInput>
+          <SelectInput value={filtroAcao} onChange={(e) => setFiltroAcao(e.target.value)} className="sm:max-w-[160px]">
+            <option value="">Todas as ações</option>
+            <option value="criar">Criação</option>
+            <option value="editar">Edição</option>
+            <option value="excluir">Exclusão</option>
+          </SelectInput>
+          <Botao variant="ghost" onClick={exportarCSV}>Exportar log (CSV)</Botao>
+        </div>
+      </Card>
+
+      <Card className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs text-inkSoft border-b border-line">
+              <th className="py-2 pr-3">Data/Hora</th>
+              <th className="py-2 pr-3">Usuário</th>
+              <th className="py-2 pr-3">Tipo</th>
+              <th className="py-2 pr-3">Ação</th>
+              <th className="py-2 pr-3">Descrição</th>
+            </tr>
+          </thead>
+          <tbody>
+            {linhas.map((l) => (
+              <tr key={l.id} className="border-b border-line/50 align-top">
+                <td className="py-1.5 pr-3 whitespace-nowrap">{fmtDateTime(l.timestamp)}</td>
+                <td className="py-1.5 pr-3 whitespace-nowrap">{l.usuarioNome || "—"}</td>
+                <td className="py-1.5 pr-3">{l.entidade}</td>
+                <td className="py-1.5 pr-3"><AcaoPill acao={l.acao} /></td>
+                <td className="py-1.5 pr-3">{l.descricao}</td>
+              </tr>
+            ))}
+            {linhas.length === 0 && (
+              <tr>
+                <td colSpan={5} className="py-4 text-center text-inkSoft italic">
+                  Nenhum registro encontrado com esses filtros.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </Card>
+      <div className="text-xs text-inkSoft mt-3">
+        Para não crescer indefinidamente, este log mantém apenas os <b>1.000 registros mais
+        recentes</b> — os mais antigos são descartados automaticamente à medida que novos são
+        criados.
+      </div>
+    </div>
+  );
+}
+
+// ---- Relatórios ----
+
+const RELAT_SUBS = [
+  { id: "resumo", label: "Resumo da Empresa" },
+  { id: "comparativo", label: "Comparativo entre Empresas" },
+  { id: "exportar", label: "Exportar / Imprimir" },
+];
+
+// Busca lançamentos + saldos de UMA empresa direto do Firestore (usado para
+// montar o Comparativo e o Backup, que precisam de todas as empresas de uma
+// vez — não só da empresa ativa selecionada no momento).
+async function buscarDadosEmpresa(empresaId) {
+  let lancamentos = [], saldos = {};
+  try {
+    const r = await window.storage.get(`lancamentos_${empresaId}`, true);
+    lancamentos = r ? JSON.parse(r.value) : [];
+  } catch {}
+  try {
+    const r = await window.storage.get(`saldos_${empresaId}`, true);
+    saldos = r ? JSON.parse(r.value) : {};
+  } catch {}
+  return { lancamentos, saldos };
+}
+
+function RelatorioResumo({ empresa, lancamentos, saldos, leaves, contaByCode }) {
+  if (!empresa) return <div className="text-sm text-inkSoft italic">Selecione uma empresa ativa acima.</div>;
+
+  const dre = computeDRE(lancamentos, saldos);
+  const ativoCirc = debMinusCredPrefix(lancamentos, saldos, "1.1");
+  const ativoNaoCirc = debMinusCredPrefix(lancamentos, saldos, "1.2");
+  const totalAtivo = ativoCirc + ativoNaoCirc;
+  const passivoCirc = credMinusDebPrefix(lancamentos, saldos, "2.1");
+  const passivoNaoCirc = credMinusDebPrefix(lancamentos, saldos, "2.2");
+  const pl = credMinusDebPrefix(lancamentos, saldos, "3");
+  const totalPassivoPL = passivoCirc + passivoNaoCirc + pl + dre.resultadoLiquido;
+  const okBP = Math.abs(totalAtivo - totalPassivoPL) < 0.005;
+
+  let totDeb = 0, totCred = 0;
+  leaves.forEach((c) => {
+    const s = saldoConta(lancamentos, saldos, contaByCode, c.codigo);
+    totDeb += s.deb; totCred += s.cred;
+  });
+  const okBal = Math.abs(totDeb - totCred) < 0.005;
+
+  return (
+    <div>
+      <h3 className="font-serif font-semibold text-ink text-lg mb-1">Resumo — {empresa.nome}</h3>
+      <p className="text-sm text-inkSoft mb-4">
+        Painel consolidado com os principais indicadores apurados a partir dos lançamentos e saldos
+        iniciais desta empresa.
+      </p>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <Card><div className="text-xs text-inkSoft">Lançamentos no período</div><div className="text-xl font-serif font-semibold text-ink">{(lancamentos || []).length}</div></Card>
+        <Card><div className="text-xs text-inkSoft">Total do Ativo</div><div className="text-xl font-serif font-semibold text-ink">{money(totalAtivo)}</div></Card>
+        <Card><div className="text-xs text-inkSoft">Receita Bruta</div><div className="text-xl font-serif font-semibold text-green">{money(dre.receitaBruta)}</div></Card>
+        <Card><div className="text-xs text-inkSoft">Resultado do Exercício</div><div className={"text-xl font-serif font-semibold " + (dre.resultadoLiquido >= 0 ? "text-green" : "text-red")}>{money(dre.resultadoLiquido)}</div></Card>
+        <Card><div className="text-xs text-inkSoft">Situação do Balancete</div><div className={"text-xl font-serif font-semibold " + (okBal ? "text-green" : "text-red")}>{okBal ? "Fechado" : "Divergente"}</div></Card>
+        <Card><div className="text-xs text-inkSoft">Situação do Balanço</div><div className={"text-xl font-serif font-semibold " + (okBP ? "text-green" : "text-red")}>{okBP ? "Fechado" : "Divergente"}</div></Card>
+      </div>
+      <div className="text-xs text-inkSoft mt-4">
+        Para o detalhamento completo, consulte os módulos Balancete, DRE, Encerramento e Balanço
+        Patrimonial. Use a aba <b>Exportar / Imprimir</b> para gerar uma versão em PDF ou planilha.
+      </div>
+    </div>
+  );
+}
+
+function RelatorioComparativo({ empresas, empresaAtivaId }) {
+  const [dados, setDados] = useState(null);
+  const [carregando, setCarregando] = useState(false);
+
+  const carregar = async () => {
+    setCarregando(true);
+    const lista = empresas || [];
+    const resultado = await Promise.all(
+      lista.map(async (em) => {
+        const { lancamentos, saldos } = await buscarDadosEmpresa(em.id);
+        const ativo = debMinusCredPrefix(lancamentos, saldos, "1.1") + debMinusCredPrefix(lancamentos, saldos, "1.2");
+        const dre = computeDRE(lancamentos, saldos);
+        return { empresa: em, nLanc: (lancamentos || []).length, ativo, resultado: dre.resultadoLiquido };
+      })
+    );
+    setDados(resultado);
+    setCarregando(false);
+  };
+
+  useEffect(() => {
+    carregar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div>
+      <h3 className="font-serif font-semibold text-ink text-lg mb-1">Comparativo entre Empresas</h3>
+      <p className="text-sm text-inkSoft mb-4">
+        Visão geral de todas as empresas cadastradas — útil para acompanhar várias turmas ou
+        empresas ao mesmo tempo.
+      </p>
+      <Card className="mb-3">
+        <Botao variant="ghost" onClick={carregar} disabled={carregando}>
+          {carregando ? "Atualizando…" : "Atualizar dados"}
+        </Botao>
+      </Card>
+      <Card className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs text-inkSoft border-b border-line">
+              <th className="py-2 pr-3">Empresa</th>
+              <th className="py-2 pr-3">Aluno responsável</th>
+              <th className="py-2 pr-3 text-right">Lançamentos</th>
+              <th className="py-2 pr-3 text-right">Total do Ativo</th>
+              <th className="py-2 pr-3 text-right">Resultado do Exercício</th>
+            </tr>
+          </thead>
+          <tbody>
+            {carregando && !dados && (
+              <tr><td colSpan={5} className="py-4 text-center text-inkSoft italic">Carregando…</td></tr>
+            )}
+            {dados && dados.length === 0 && (
+              <tr><td colSpan={5} className="py-4 text-center text-inkSoft italic">Nenhuma empresa cadastrada.</td></tr>
+            )}
+            {dados && dados.map(({ empresa, nLanc, ativo, resultado }) => (
+              <tr key={empresa.id} className="border-b border-line/50">
+                <td className="py-1.5 pr-3">
+                  {empresa.nome} {empresa.id === empresaAtivaId && <Pill tone="gold">ativa</Pill>}
+                </td>
+                <td className="py-1.5 pr-3 text-inkSoft">{empresa.responsavel || "—"}</td>
+                <td className="py-1.5 pr-3 text-right">{nLanc}</td>
+                <td className="py-1.5 pr-3 text-right">{money(ativo)}</td>
+                <td className={"py-1.5 pr-3 text-right " + (resultado >= 0 ? "text-green" : "text-red")}>{money(resultado)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+    </div>
+  );
+}
+
+function RelatorioExportar({ empresa, lancamentos, saldos, leaves, contaByCode }) {
+  const exportarDiario = () => {
+    if (!empresa) return;
+    const rows = [["Data", "Tipo de Operação", "Histórico", "Conta Débito", "Nome Débito", "Conta Crédito", "Nome Crédito", "Valor", "Documento", "Observações"]];
+    (lancamentos || []).forEach((l) => {
+      const cd = contaByCode[l.contaDebito], cc = contaByCode[l.contaCredito];
+      rows.push([fmtDate(l.data), l.tipoOperacao || "", l.historico, l.contaDebito, cd ? cd.nome : "", l.contaCredito, cc ? cc.nome : "", numFmt(l.valor), l.documento || "", l.observacoes || ""]);
+    });
+    downloadCSV(`livro_diario_${slug(empresa.nome)}.csv`, rows);
+  };
+
+  const exportarBalancete = () => {
+    if (!empresa) return;
+    const rows = [["Código", "Conta", "Natureza", "Total Débitos", "Total Créditos", "Saldo Devedor", "Saldo Credor"]];
+    leaves.forEach((c) => {
+      const s = saldoConta(lancamentos, saldos, contaByCode, c.codigo);
+      if (s.deb !== 0 || s.cred !== 0) rows.push([c.codigo, c.nome, c.natureza, numFmt(s.deb), numFmt(s.cred), s.dev ? numFmt(s.dev) : "", s.cre ? numFmt(s.cre) : ""]);
+    });
+    downloadCSV(`balancete_${slug(empresa.nome)}.csv`, rows);
+  };
+
+  const imprimir = () => {
+    if (!empresa) return;
+    window.print();
+  };
+
+  return (
+    <div>
+      <h3 className="font-serif font-semibold text-ink text-lg mb-1">
+        Exportar e Imprimir {empresa ? `— ${empresa.nome}` : ""}
+      </h3>
+      <p className="text-sm text-inkSoft mb-4">
+        Baixe os dados em CSV para abrir no Excel, ou use o comando de impressão do navegador (e
+        escolha "Salvar como PDF" no destino) para uma versão em PDF da tela atual.
+      </p>
+      <Card>
+        <div className="flex flex-wrap gap-2">
+          <Botao onClick={imprimir} disabled={!empresa}>Imprimir esta tela (ou salvar como PDF)</Botao>
+          <Botao variant="ghost" onClick={exportarDiario} disabled={!empresa}>Baixar Livro Diário (CSV)</Botao>
+          <Botao variant="ghost" onClick={exportarBalancete} disabled={!empresa}>Baixar Balancete (CSV)</Botao>
+        </div>
+      </Card>
+      <div className="text-xs text-inkSoft mt-3">
+        Os arquivos CSV usam ponto e vírgula como separador, compatível com o Excel em português.
+        Para imprimir o Balancete, a DRE ou o Balanço completos, abra o módulo correspondente e use
+        o comando de impressão do navegador diretamente nele.
+      </div>
+    </div>
+  );
+}
+
+function GestaoRelatoriosView({ perfil, empresa, empresaAtivaId, lancamentos, saldos, leaves, contaByCode, empresasParaComparar }) {
+  const [sub, setSub] = useState("resumo");
+  const podeComparar = perfil?.tipo === "Mestre" || perfil?.tipo === "Professor";
+  const subs = podeComparar ? RELAT_SUBS : RELAT_SUBS.filter((s) => s.id !== "comparativo");
+
+  return (
+    <div>
+      <SubNav itens={subs} atual={sub} aoTrocar={setSub} />
+      {sub === "resumo" && <RelatorioResumo empresa={empresa} lancamentos={lancamentos} saldos={saldos} leaves={leaves} contaByCode={contaByCode} />}
+      {sub === "comparativo" && podeComparar && (
+        <RelatorioComparativo empresas={empresasParaComparar} empresaAtivaId={empresaAtivaId} />
+      )}
+      {sub === "exportar" && (
+        <RelatorioExportar empresa={empresa} lancamentos={lancamentos} saldos={saldos} leaves={leaves} contaByCode={contaByCode} />
+      )}
+    </div>
+  );
+}
+
+// ---- Backup ----
+// Diferente da versão antiga (localStorage, por aparelho): agora os dados já
+// vivem na nuvem e sincronizam sozinhos entre todo mundo. Este módulo serve
+// para arquivar um retrato do sistema inteiro (ex.: entregar ao professor, ou
+// guardar antes de uma mudança grande) e, se necessário, restaurar esse
+// retrato — o que SUBSTITUI os dados de TODOS os usuários, não só os seus.
+
+function GestaoBackupView({ perfil, turmas, empresas, usuarios, estoqueMovs, auditoria, registrarAuditoria }) {
+  const podeExportar = perfil?.tipo === "Mestre" || perfil?.tipo === "Professor";
+  const podeRestaurar = !!perfil?.permissoes?.restaurarBackup;
+  const [gerando, setGerando] = useState(false);
+  const [restaurando, setRestaurando] = useState(false);
+  const fileInputRef = useRef(null);
+
+  if (!podeExportar) {
+    return (
+      <div className="text-sm text-inkSoft italic">
+        Você não tem permissão para acessar o Backup. Peça a um usuário <b>Mestre</b> ou{" "}
+        <b>Professor</b>.
+      </div>
+    );
+  }
+
+  const exportarBackup = async () => {
+    setGerando(true);
+    try {
+      const lista = empresas || [];
+      const porEmpresa = await Promise.all(
+        lista.map(async (em) => ({ id: em.id, ...(await buscarDadosEmpresa(em.id)) }))
+      );
+      const lancamentosPorEmpresa = {};
+      const saldosPorEmpresa = {};
+      porEmpresa.forEach((e) => {
+        lancamentosPorEmpresa[e.id] = e.lancamentos;
+        saldosPorEmpresa[e.id] = e.saldos;
+      });
+      const backup = {
+        tipo: "backup-sistema-contabil-react",
+        versao: 1,
+        exportadoEm: new Date().toISOString(),
+        turmas: turmas || [],
+        empresas: lista,
+        usuarios: usuarios || [],
+        lancamentosPorEmpresa,
+        saldosPorEmpresa,
+        estoqueMovs: estoqueMovs || [],
+        auditoria: auditoria || [],
+      };
+      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `backup_sistema_contabil_${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      await registrarAuditoria("criar", "sistema", "Gerou um backup completo do sistema");
+    } finally {
+      setGerando(false);
+    }
+  };
+
+  const triggerImport = () => fileInputRef.current?.click();
+
+  const handleImport = (e) => {
+    if (!podeRestaurar) {
+      alert("Você não tem permissão para restaurar backups.");
+      e.target.value = "";
+      return;
+    }
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      let data;
+      try {
+        data = JSON.parse(ev.target.result);
+      } catch {
+        alert("Não foi possível ler este arquivo. Verifique se é um backup válido gerado por este sistema.");
+        e.target.value = "";
+        return;
+      }
+      if (!data || !Array.isArray(data.usuarios) || !Array.isArray(data.empresas)) {
+        alert("Este arquivo não parece ser um backup válido do Sistema de Escrituração Contábil.");
+        e.target.value = "";
+        return;
+      }
+      const resumo = `${data.usuarios.length} usuário(s), ${data.empresas.length} empresa(s)` + (data.exportadoEm ? `, gerado em ${new Date(data.exportadoEm).toLocaleString("pt-BR")}` : "");
+      const digitado = prompt(
+        `ATENÇÃO: restaurar este backup (${resumo}) vai SUBSTITUIR os dados de TODOS os usuários do sistema neste momento — não só os seus. Esta ação não pode ser desfeita.\n\nPara confirmar, digite RESTAURAR (em maiúsculas):`
+      );
+      if (digitado !== "RESTAURAR") {
+        alert("Restauração cancelada.");
+        e.target.value = "";
+        return;
+      }
+      setRestaurando(true);
+      try {
+        await window.storage.set("turmas", JSON.stringify(data.turmas || []), true);
+        await window.storage.set("empresas", JSON.stringify(data.empresas || []), true);
+        for (const u of data.usuarios || []) {
+          await window.storage.set(`usuario_${u.uid}`, JSON.stringify(u), true);
+        }
+        for (const empId of Object.keys(data.lancamentosPorEmpresa || {})) {
+          await window.storage.set(`lancamentos_${empId}`, JSON.stringify(data.lancamentosPorEmpresa[empId] || []), true);
+        }
+        for (const empId of Object.keys(data.saldosPorEmpresa || {})) {
+          await window.storage.set(`saldos_${empId}`, JSON.stringify(data.saldosPorEmpresa[empId] || {}), true);
+        }
+        await window.storage.set("estoque_movs", JSON.stringify(data.estoqueMovs || []), true);
+        await registrarAuditoria("editar", "sistema", `Restaurou um backup (${resumo})`);
+        alert("Backup restaurado com sucesso. A página vai recarregar para atualizar todos os dados.");
+        window.location.reload();
+      } finally {
+        setRestaurando(false);
+        e.target.value = "";
+      }
+    };
+    reader.readAsText(file, "utf-8");
+  };
+
+  return (
+    <div>
+      <h2 className="text-lg font-serif font-semibold text-ink mb-1">Backup</h2>
+      <p className="text-sm text-inkSoft mb-4">
+        Os dados do sistema já ficam salvos e sincronizados automaticamente na nuvem — diferente da
+        versão antiga, não é mais preciso baixar um backup só para não perder o trabalho. Use este
+        módulo para arquivar um retrato completo (ex.: entregar ao final do semestre) ou para
+        restaurar o sistema em caso de emergência.
+      </p>
+
+      <Card className="mb-4">
+        <h3 className="font-serif font-semibold text-ink mb-2">Exportar backup completo</h3>
+        <p className="text-sm text-inkSoft mb-3">
+          Gera um arquivo único (.json) com tudo — turmas, empresas, usuários, lançamentos, saldos
+          iniciais, estoque e o log de auditoria.
+        </p>
+        <Botao onClick={exportarBackup} disabled={gerando}>
+          {gerando ? "Gerando…" : "Baixar backup completo"}
+        </Botao>
+      </Card>
+
+      <Card>
+        <h3 className="font-serif font-semibold text-ink mb-2">Restaurar backup</h3>
+        <p className="text-sm text-red mb-3">
+          <b>Atenção:</b> restaurar um backup substitui os dados de TODOS os usuários do sistema
+          neste momento, não só os seus — use apenas em emergências (ex.: recuperar de uma falha).
+        </p>
+        {podeRestaurar ? (
+          <>
+            <Botao variant="danger" onClick={triggerImport} disabled={restaurando}>
+              {restaurando ? "Restaurando…" : "Selecionar arquivo de backup para restaurar"}
+            </Botao>
+            <input ref={fileInputRef} type="file" accept="application/json" onChange={handleImport} className="hidden" />
+          </>
+        ) : (
+          <div className="text-sm text-inkSoft">
+            Você não tem permissão para restaurar backups. Peça a um usuário <b>Mestre</b>.
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+// ============================================================================
 // GESTÃO — USUÁRIOS (e Aprovações)
 // ============================================================================
 
@@ -3211,7 +3824,7 @@ function PainelPermissoes({ usuario, onSalvar, onFechar }) {
   );
 }
 
-function GestaoUsuariosView({ perfil, usuarios, turmas, recarregar }) {
+function GestaoUsuariosView({ perfil, usuarios, turmas, recarregar, registrarAuditoria }) {
   const [editandoPermissoesUid, setEditandoPermissoesUid] = useState(null);
   const [editandoTurmaUid, setEditandoTurmaUid] = useState(null);
   const podeExcluir = !!perfil?.permissoes?.excluirUsuarios;
@@ -3225,11 +3838,14 @@ function GestaoUsuariosView({ perfil, usuarios, turmas, recarregar }) {
       return;
     }
     await atualizarUsuario(usuario.uid, { tipo: novoTipo, permissoes: defaultPermissoes(novoTipo) });
+    await registrarAuditoria("editar", "usuario", `Mudou o tipo de "${usuario.nome}" de ${usuario.tipo} para ${novoTipo}`);
     recarregar();
   };
 
   const mudarTurma = async (usuario, turmaId) => {
     await atualizarUsuario(usuario.uid, { turmaId: turmaId || null });
+    const nomeNovaTurma = (turmas || []).find((t) => t.id === turmaId)?.nome || "—";
+    await registrarAuditoria("editar", "usuario", `Mudou a turma de "${usuario.nome}" para "${nomeNovaTurma}"`);
     setEditandoTurmaUid(null);
     recarregar();
   };
@@ -3245,6 +3861,7 @@ function GestaoUsuariosView({ perfil, usuarios, turmas, recarregar }) {
     }
     if (!confirm(`Excluir a conta de "${usuario.nome}"? Esta ação não pode ser desfeita.`)) return;
     await excluirUsuarioDoc(usuario.uid);
+    await registrarAuditoria("excluir", "usuario", `Excluiu a conta de "${usuario.nome}"`);
     recarregar();
   };
 
@@ -3331,7 +3948,9 @@ function GestaoUsuariosView({ perfil, usuarios, turmas, recarregar }) {
           usuario={aprovados.find((u) => u.uid === editandoPermissoesUid)}
           onFechar={() => setEditandoPermissoesUid(null)}
           onSalvar={async (permissoes) => {
+            const alvo = aprovados.find((u) => u.uid === editandoPermissoesUid);
             await atualizarUsuario(editandoPermissoesUid, { permissoes });
+            await registrarAuditoria("editar", "usuario", `Alterou as permissões de "${alvo?.nome}"`);
             recarregar();
           }}
         />
@@ -3340,18 +3959,20 @@ function GestaoUsuariosView({ perfil, usuarios, turmas, recarregar }) {
   );
 }
 
-function GestaoAprovacoesView({ usuarios, turmas, recarregar }) {
+function GestaoAprovacoesView({ usuarios, turmas, recarregar, registrarAuditoria }) {
   const pendentes = (usuarios || []).filter((u) => !u.aprovado);
   const turmaNome = (id) => (turmas || []).find((t) => t.id === id)?.nome || "—";
 
   const aprovar = async (u) => {
     await atualizarUsuario(u.uid, { aprovado: true });
+    await registrarAuditoria("editar", "usuario", `Aprovou o cadastro de "${u.nome}" (${u.tipo})`);
     recarregar();
   };
 
   const rejeitar = async (u) => {
     if (!confirm(`Rejeitar e excluir o cadastro de "${u.nome}"?`)) return;
     await excluirUsuarioDoc(u.uid);
+    await registrarAuditoria("excluir", "usuario", `Rejeitou o cadastro de "${u.nome}"`);
     recarregar();
   };
 
@@ -3466,16 +4087,35 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
           salvarTurmas={salvarTurmas}
           recarregarTurmas={recarregarTurmas}
           usuarios={usuarios}
+          recarregarUsuarios={recarregarUsuarios}
+          registrarAuditoria={registrarAuditoria}
         />
       )}
       {aba === "empresas" && (
-        <GestaoEmpresasView perfil={perfil} empresas={empresas} salvarEmpresas={salvarEmpresas} usuarios={usuarios} />
+        <GestaoEmpresasView
+          perfil={perfil}
+          empresas={empresas}
+          salvarEmpresas={salvarEmpresas}
+          usuarios={usuarios}
+          registrarAuditoria={registrarAuditoria}
+        />
       )}
       {aba === "usuarios" && perfil?.tipo !== "Aluno" && (
-        <GestaoUsuariosView perfil={perfil} usuarios={usuarios} turmas={turmas} recarregar={recarregarUsuarios} />
+        <GestaoUsuariosView
+          perfil={perfil}
+          usuarios={usuarios}
+          turmas={turmas}
+          recarregar={recarregarUsuarios}
+          registrarAuditoria={registrarAuditoria}
+        />
       )}
       {aba === "aprovacoes" && (
-        <GestaoAprovacoesView usuarios={usuarios} turmas={turmas} recarregar={recarregarUsuarios} />
+        <GestaoAprovacoesView
+          usuarios={usuarios}
+          turmas={turmas}
+          recarregar={recarregarUsuarios}
+          registrarAuditoria={registrarAuditoria}
+        />
       )}
       {aba === "plano-contas" && (
         <GestaoPlanoContasView
@@ -3489,7 +4129,13 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
       {aba === "saldos" && (
         <>
           <SeletorEmpresaAtiva empresas={empresasVisiveis} empresaAtivaId={empresaAtivaId} setEmpresaAtivaId={setEmpresaAtivaId} />
-          <GestaoSaldosView empresa={empresaAtiva} saldos={saldos} salvarSaldos={salvarSaldos} leaves={leavesAtivas} />
+          <GestaoSaldosView
+            empresa={empresaAtiva}
+            saldos={saldos}
+            salvarSaldos={salvarSaldos}
+            leaves={leavesAtivas}
+            registrarAuditoria={registrarAuditoria}
+          />
         </>
       )}
       {aba === "lancamentos" && (
@@ -3502,6 +4148,7 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
             salvarLancamentos={salvarLancamentos}
             leaves={leavesAtivas}
             contaByCode={contaByCodeAtivo}
+            registrarAuditoria={registrarAuditoria}
           />
         </>
       )}
@@ -3547,15 +4194,43 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
           <GestaoBalancoView empresa={empresaAtiva} lancamentos={lancamentos} saldos={saldos} />
         </>
       )}
+      {aba === "relatorios" && (
+        <>
+          <SeletorEmpresaAtiva empresas={empresasVisiveis} empresaAtivaId={empresaAtivaId} setEmpresaAtivaId={setEmpresaAtivaId} />
+          <GestaoRelatoriosView
+            perfil={perfil}
+            empresa={empresaAtiva}
+            empresaAtivaId={empresaAtivaId}
+            lancamentos={lancamentos}
+            saldos={saldos}
+            leaves={leavesAtivas}
+            contaByCode={contaByCodeAtivo}
+            empresasParaComparar={empresasVisiveis}
+          />
+        </>
+      )}
       {aba === "introducao" && (
         <GestaoIntroducaoView
           perfil={perfil}
           contas={contasAtivas}
           estoqueMovs={estoqueMovs}
           salvarEstoqueMovs={salvarEstoqueMovs}
+          registrarAuditoria={registrarAuditoria}
         />
       )}
       {aba === "manual" && <GestaoManualView />}
+      {aba === "auditoria" && <GestaoAuditoriaView perfil={perfil} auditoria={auditoria} />}
+      {aba === "backup" && (
+        <GestaoBackupView
+          perfil={perfil}
+          turmas={turmas}
+          empresas={empresas}
+          usuarios={usuarios}
+          estoqueMovs={estoqueMovs}
+          auditoria={auditoria}
+          registrarAuditoria={registrarAuditoria}
+        />
+      )}
       {moduloFuturo && <ModuloEmBreve modulo={moduloFuturo} />}
     </Layout>
   );
