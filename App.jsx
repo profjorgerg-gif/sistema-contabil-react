@@ -78,6 +78,7 @@ const EMPRESA_ITENS = [
 const APRENDIZADO_ITENS = [
   { id: "introducao", label: "Introdução à Contabilidade", icon: GraduationCap },
   { id: "manual", label: "Manual do Aluno", icon: BookOpen },
+  { id: "manual-professor", label: "Manual do Professor", icon: ShieldCheck },
 ];
 
 // ============================================================================
@@ -766,7 +767,7 @@ function Layout({ perfil, aba, setAba, podeVoltar, aoVoltar, children }) {
           )}
 
           <div className="px-5 pt-4 pb-1 text-[11px] uppercase tracking-wide text-white/40">Aprendizado</div>
-          {APRENDIZADO_ITENS.map((item) => (
+          {APRENDIZADO_ITENS.filter((item) => !(item.id === "manual-professor" && perfil?.tipo === "Aluno")).map((item) => (
             <button
               key={item.id}
               onClick={() => irPara(item.id)}
@@ -863,7 +864,10 @@ function Layout({ perfil, aba, setAba, podeVoltar, aoVoltar, children }) {
 
 function Capa({ perfil, setAba, contagens }) {
   const souAluno = perfil?.tipo === "Aluno";
-  const cardsModulos = souAluno ? [...APRENDIZADO_ITENS, ...EMPRESA_ITENS] : GESTAO_ITENS;
+  const aprendizadoVisivel = souAluno
+    ? APRENDIZADO_ITENS.filter((item) => item.id !== "manual-professor")
+    : APRENDIZADO_ITENS;
+  const cardsModulos = souAluno ? [...aprendizadoVisivel, ...EMPRESA_ITENS] : GESTAO_ITENS;
 
   return (
     <div>
@@ -3736,6 +3740,276 @@ function ManualGlossario() {
   );
 }
 
+// ============================================================================
+// MANUAL DO PROFESSOR — operacionalidade dos acessos de Mestre/Professor.
+// Visível só para quem não é Aluno (ver filtro em APRENDIZADO_ITENS e na Capa).
+// ============================================================================
+
+const MANUAL_PROF_SUBS = [
+  { id: "turmas", label: "Turmas" },
+  { id: "empresas", label: "Empresas" },
+  { id: "usuarios", label: "Usuários e Aprovações" },
+  { id: "plano", label: "Plano de Contas" },
+  { id: "sistema", label: "Auditoria e Backup" },
+];
+
+function ManualProfTurmas() {
+  return (
+    <div>
+      <h3 className="font-serif font-semibold text-ink text-lg mb-1">Gestão de Turmas</h3>
+      <p className="text-sm text-inkSoft mb-4">
+        A turma é o primeiro cadastro do sistema — sem ela, nenhum aluno consegue se registrar.
+      </p>
+      <TabelaIlustrada
+        legenda="Card de cada turma, com a contagem de usuários vinculados"
+        colunas={["Turma", "Usuários vinculados"]}
+        badgeColuna={0}
+        linhas={[
+          ["4741-N-1 - MÓDULO-1-CONTABILIDADE", "12 usuário(s)"],
+          ["4739-N-1 - MÓDULO-1-ADMINISTRAÇÃO FINANCEIRA", "0 usuário(s)"],
+        ]}
+      />
+      <Card className="mb-4">
+        <PassoManual n={1} titulo="Cadastrar uma turma">
+          Vá em <b>Turmas</b>, digite o nome (ex.: "3ª Contabilidade — Manhã") e clique em
+          "Adicionar". Faça isso antes de divulgar o link de cadastro aos alunos.
+        </PassoManual>
+        <PassoManual n={2} titulo="Renomear ou excluir">
+          Use os ícones de lápis (editar) e lixeira (excluir) em cada card. Uma turma com
+          usuários vinculados não pode ser excluída pelo caminho normal — o sistema avisa e
+          pede para mudar a turma desses usuários primeiro.
+        </PassoManual>
+        <PassoManual n={3} titulo='Zona de perigo: "Excluir e desvincular"'>
+          Só um usuário <b>Mestre</b> vê esse link (em vermelho) quando a turma já tem usuários
+          vinculados. Ele exclui a turma e desvincula todos os alunos dela de uma vez — sem
+          apagar as contas deles, só tira a turma. Pede confirmação digitando o nome exato da
+          turma, por ser uma ação irreversível.
+        </PassoManual>
+      </Card>
+      <div className="text-xs text-inkSoft">
+        Alunos só enxergam a própria turma nesta tela; Mestre e Professor veem todas.
+      </div>
+    </div>
+  );
+}
+
+function ManualProfEmpresas() {
+  return (
+    <div>
+      <h3 className="font-serif font-semibold text-ink text-lg mb-1">Gestão de Empresas</h3>
+      <p className="text-sm text-inkSoft mb-4">
+        Cada empresa fictícia é vinculada a <b>um aluno específico</b> — é essa empresa que ele vai
+        usar em Lançamentos, Saldos, Relatórios etc.
+      </p>
+      <TabelaIlustrada
+        legenda="Campos do formulário de cadastro de empresa"
+        colunas={["Campo", "Preenchimento"]}
+        badgeColuna={0}
+        linhas={[
+          ["Nome da empresa", "Ex.: Comércio Exemplo Ltda"],
+          ["CNPJ (fictício)", "Botão \"Gerar\" cria um CNPJ válido só para prática"],
+          ["Atividade", "Ex.: Comércio varejista"],
+          ["Aluno responsável", "Escolha na lista de alunos já aprovados"],
+        ]}
+      />
+      <Card className="mb-4">
+        <PassoManual n={1} titulo="Cadastrar a empresa">
+          Preencha nome, CNPJ (ou gere automaticamente) e atividade. O campo "Responsável" é
+          texto livre — não confundir com "Aluno responsável", que é o vínculo de verdade.
+        </PassoManual>
+        <PassoManual n={2} titulo="Vincular ao aluno">
+          No campo <b>"Aluno responsável"</b>, escolha o aluno na lista. Só quem já se
+          cadastrou e foi aprovado aparece aqui. Sem esse vínculo, a empresa fica
+          "— ainda não vinculada —" e nenhum aluno consegue selecioná-la como empresa ativa.
+        </PassoManual>
+        <PassoManual n={3} titulo="Editar ou trocar o aluno vinculado">
+          Clique no lápis a qualquer momento para reatribuir a empresa a outro aluno, corrigir o
+          CNPJ ou a atividade.
+        </PassoManual>
+      </Card>
+      <div className="text-xs text-inkSoft">
+        Alunos só veem a própria empresa nesta tela e no seletor "Empresa ativa"; Mestre e
+        Professor veem todas, com o nome do aluno vinculado em cada card.
+      </div>
+    </div>
+  );
+}
+
+function ManualProfUsuarios() {
+  return (
+    <div>
+      <h3 className="font-serif font-semibold text-ink text-lg mb-1">Usuários e Aprovações</h3>
+      <p className="text-sm text-inkSoft mb-4">
+        Todo cadastro novo (Aluno ou Professor) entra como <b>pendente</b> e precisa de aprovação
+        antes de conseguir entrar no sistema.
+      </p>
+
+      <h4 className="font-semibold text-ink text-sm mb-1">Aprovações</h4>
+      <p className="text-sm text-inkSoft mb-3">
+        A aba "Aprovações" só aparece para quem tem a permissão correspondente, e mostra a fila de
+        cadastros pendentes.
+      </p>
+      <Card className="mb-4">
+        <PassoManual n={1} titulo="Aprovar">
+          Confere nome, e-mail e turma do cadastro, e clica em "Aprovar" — a conta passa a poder
+          fazer login imediatamente.
+        </PassoManual>
+        <PassoManual n={2} titulo="Rejeitar">
+          Exclui o cadastro pendente por completo (útil para cadastros duplicados ou por engano).
+        </PassoManual>
+      </Card>
+
+      <h4 className="font-semibold text-ink text-sm mb-1">Usuários</h4>
+      <p className="text-sm text-inkSoft mb-3">
+        Lista todas as contas já aprovadas, com tipo, turma e permissões de cada uma.
+      </p>
+      <Card className="mb-4">
+        <PassoManual n={1} titulo="Mudar o tipo (Aluno / Professor / Mestre)">
+          Escolha o novo tipo no seletor da linha do usuário. As permissões dele são
+          redefinidas automaticamente para o padrão do novo tipo. Não é possível rebaixar ou
+          excluir o único Mestre restante do sistema.
+        </PassoManual>
+        <PassoManual n={2} titulo="Mudar a turma">
+          Útil quando um aluno troca de turma no meio do curso.
+        </PassoManual>
+        <PassoManual n={3} titulo='Botão "Permissões"'>
+          Abre um painel com cada permissão individual (excluir lançamentos, excluir empresas,
+          excluir usuários, gerenciar turmas e empresas, restaurar backup, ver auditoria, aprovar
+          usuários) — dá para ligar ou desligar qualquer uma, além do padrão do tipo. Use para
+          casos especiais, como dar a um aluno de confiança a permissão de excluir os próprios
+          lançamentos errados.
+        </PassoManual>
+        <PassoManual n={4} titulo="Excluir">
+          Remove a conta por completo (só quem tem a permissão "Excluir usuários").
+        </PassoManual>
+      </Card>
+      <div className="text-xs text-inkSoft">
+        Permissões padrão por tipo — Mestre: todas ligadas. Professor: excluir lançamentos,
+        gerenciar turmas e empresas, ver auditoria. Aluno: nenhuma permissão extra por padrão.
+      </div>
+    </div>
+  );
+}
+
+function ManualProfPlano() {
+  return (
+    <div>
+      <h3 className="font-serif font-semibold text-ink text-lg mb-1">Plano de Contas — edição (só Mestre)</h3>
+      <p className="text-sm text-inkSoft mb-4">
+        Diferente do Aluno (que só consulta), um usuário <b>Mestre</b> pode incluir, editar e
+        excluir contas — com histórico de alterações registrado automaticamente.
+      </p>
+      <TabelaIlustrada
+        legenda="Campos do formulário de conta"
+        colunas={["Campo", "Observação"]}
+        badgeColuna={0}
+        linhas={[
+          ["Código", "Sugerido automaticamente pelo Grupo + Tipo — editável"],
+          ["Grupo / Tipo / Natureza", "Definem a classificação e a numeração"],
+          ["Recebe lançamentos?", "Só contas analíticas/subcontas devem marcar Sim"],
+          ["Controla estoque?", "Só contas físicas de mercadoria/produto"],
+        ]}
+      />
+      <Card className="mb-4">
+        <PassoManual n={1} titulo="Criar uma conta nova">
+          Clique em "Nova conta". Ao escolher Grupo e Tipo, o Código já vem sugerido seguindo a
+          sequência das contas existentes — pode aceitar ou digitar outro.
+        </PassoManual>
+        <PassoManual n={2} titulo="Editar">
+          O código não pode ser alterado numa conta já existente (evita quebrar lançamentos
+          antigos que já usam aquele código) — só nome, grupo, natureza etc.
+        </PassoManual>
+        <PassoManual n={3} titulo='Marcar "Controla estoque"'>
+          Habilite só nas contas físicas de mercadoria/produto (ex.: "Mercadorias para
+          Revenda"). Isso faz o campo Quantidade aparecer em Lançamentos para essa conta e
+          alimenta o Controle de Estoque (PEPS/UEPS/MP) automaticamente.
+        </PassoManual>
+        <PassoManual n={4} titulo="Excluir">
+          Avisa se a conta já foi usada em algum lançamento — os lançamentos antigos continuam
+          existindo, mas passam a exibir só o código, sem nome.
+        </PassoManual>
+        <PassoManual n={5} titulo="Histórico de alterações">
+          Aparece no fim da página: quem alterou o quê e quando, para todo o plano de contas.
+        </PassoManual>
+      </Card>
+    </div>
+  );
+}
+
+function ManualProfSistema() {
+  return (
+    <div>
+      <h3 className="font-serif font-semibold text-ink text-lg mb-1">Auditoria e Backup</h3>
+
+      <h4 className="font-semibold text-ink text-sm mb-1">Auditoria</h4>
+      <p className="text-sm text-inkSoft mb-3">
+        Todo cadastro, edição ou exclusão feito por qualquer usuário fica registrado
+        automaticamente — com data/hora, quem fez e o que foi feito. Não é possível apagar essa
+        lista pela interface.
+      </p>
+      <Card className="mb-4">
+        <PassoManual n={1} titulo="Filtrar o log">
+          Use os três seletores (usuário, tipo de registro, ação) para localizar uma alteração
+          específica.
+        </PassoManual>
+        <PassoManual n={2} titulo="Exportar em CSV">
+          Baixa o log completo para arquivar ou analisar no Excel.
+        </PassoManual>
+      </Card>
+      <div className="text-xs text-inkSoft mb-4">
+        Só aparece para quem tem a permissão "Ver auditoria" (Mestre e Professor, por padrão).
+      </div>
+
+      <h4 className="font-semibold text-ink text-sm mb-1">Backup</h4>
+      <p className="text-sm text-inkSoft mb-3">
+        Os dados já ficam salvos e sincronizados na nuvem automaticamente — este módulo serve
+        para arquivar um retrato completo do sistema, ou para recuperar de uma falha grave.
+      </p>
+      <Card>
+        <PassoManual n={1} titulo="Exportar backup completo">
+          Baixa um arquivo .json com turmas, empresas, usuários, lançamentos, saldos e o log de
+          auditoria de tudo — disponível para Mestre e Professor.
+        </PassoManual>
+        <PassoManual n={2} titulo="Restaurar backup">
+          <span className="text-red">
+            Atenção: restaurar substitui os dados de TODOS os usuários do sistema neste momento,
+            não só os seus.
+          </span>{" "}
+          Use apenas em emergências. Só quem tem a permissão "Restaurar backup" (Mestre, por
+          padrão) vê essa opção, e o sistema pede para digitar "RESTAURAR" antes de confirmar.
+        </PassoManual>
+      </Card>
+
+      <h4 className="font-semibold text-ink text-sm mt-4 mb-1">Relatórios → Comparativo entre Empresas</h4>
+      <p className="text-sm text-inkSoft">
+        Só Mestre e Professor veem essa aba dentro de Relatórios — uma tabela com todas as
+        empresas cadastradas, o aluno responsável de cada uma, quantidade de lançamentos, total do
+        Ativo e resultado do exercício. Útil para acompanhar a turma inteira de uma vez, sem
+        precisar entrar empresa por empresa.
+      </p>
+    </div>
+  );
+}
+
+function GestaoManualProfessorView() {
+  const [sub, setSub] = useState("turmas");
+  return (
+    <div>
+      <h2 className="text-lg font-serif font-semibold text-ink mb-1">Manual do Professor</h2>
+      <p className="text-sm text-inkSoft mb-4">
+        Funcionalidade e operacionalidade dos acessos de Mestre/Professor — cadastro e gestão de
+        turmas, empresas, usuários, plano de contas, auditoria e backup.
+      </p>
+      <SubNav itens={MANUAL_PROF_SUBS} atual={sub} aoTrocar={setSub} />
+      {sub === "turmas" && <ManualProfTurmas />}
+      {sub === "empresas" && <ManualProfEmpresas />}
+      {sub === "usuarios" && <ManualProfUsuarios />}
+      {sub === "plano" && <ManualProfPlano />}
+      {sub === "sistema" && <ManualProfSistema />}
+    </div>
+  );
+}
+
 function GestaoManualView() {
   const [sub, setSub] = useState("acesso");
   return (
@@ -4705,6 +4979,7 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
       )}
       {aba === "introducao" && <GestaoIntroducaoView contas={contasAtivas} />}
       {aba === "manual" && <GestaoManualView />}
+      {aba === "manual-professor" && perfil?.tipo !== "Aluno" && <GestaoManualProfessorView />}
       {aba === "auditoria" && <GestaoAuditoriaView perfil={perfil} auditoria={auditoria} />}
       {aba === "backup" && (
         <GestaoBackupView
