@@ -9,6 +9,7 @@ import {
   observarSessao, cadastrar, entrar, sair, recuperarSenha, traduzErroAuth, CODIGO_MESTRE,
 } from "./firebaseAuth";
 import { LOGO_CEDUP } from "./logo";
+import { CONTAS, LEAVES, CONTA_BY_CODE, GRUPOS } from "./contas";
 
 // ============================================================================
 // CONSTANTES
@@ -50,10 +51,6 @@ const PERMISSAO_LABELS = {
 
 // Módulos que ainda chegam nas próximas fases da migração (Fase 2 em diante).
 const MODULOS_FUTUROS = [
-  { id: "plano-contas", label: "Plano de Contas", icon: BookOpen, fase: 2 },
-  { id: "saldos", label: "Saldos Iniciais", icon: Wallet, fase: 2 },
-  { id: "lancamentos", label: "Lançamentos", icon: ScrollText, fase: 2 },
-  { id: "razao", label: "Consulta por Conta", icon: Layers, fase: 2 },
   { id: "balancete", label: "Balancete de Verificação", icon: ClipboardList, fase: 3 },
   { id: "dre", label: "DRE", icon: FileBarChart, fase: 3 },
   { id: "encerramento", label: "Encerramento (ARE)", icon: History, fase: 3 },
@@ -68,6 +65,14 @@ const GESTAO_ITENS = [
   { id: "turmas", label: "Turmas", icon: School },
   { id: "empresas", label: "Empresas", icon: Building2 },
   { id: "usuarios", label: "Usuários", icon: Users },
+];
+
+// Módulos que trabalham sempre "dentro" de uma empresa ativa (Fase 2).
+const EMPRESA_ITENS = [
+  { id: "plano-contas", label: "Plano de Contas", icon: BookOpen },
+  { id: "saldos", label: "Saldos Iniciais", icon: Wallet },
+  { id: "lancamentos", label: "Lançamentos", icon: ScrollText },
+  { id: "razao", label: "Consulta por Conta", icon: Layers },
 ];
 
 // ============================================================================
@@ -96,6 +101,52 @@ function gerarCNPJFicticio() {
   const dv2 = calcularDVCNPJ([...digitos, dv1], [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
   const todos = [...digitos, dv1, dv2].join("");
   return todos.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+}
+
+// ---- Formatação de dinheiro/data e motor de cálculo (Fase 2 — ciclo contábil) ----
+function money(n) {
+  const v = Number(n) || 0;
+  const s = Math.abs(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return (v < 0 ? "-" : "") + "R$\u00A0" + s;
+}
+
+function numFmt(n) {
+  const v = Number(n) || 0;
+  return v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function fmtDate(d) {
+  if (!d) return "";
+  const partes = d.split("-");
+  if (partes.length === 3) return `${partes[2]}/${partes[1]}/${partes[0]}`;
+  return d;
+}
+
+function totalDebConta(lancamentos, saldos, codigo) {
+  const mov = (lancamentos || []).reduce((s, l) => s + (l.contaDebito === codigo ? Number(l.valor) : 0), 0);
+  const ini = Number((saldos?.[codigo] || {}).devedor || 0);
+  return mov + ini;
+}
+
+function totalCredConta(lancamentos, saldos, codigo) {
+  const mov = (lancamentos || []).reduce((s, l) => s + (l.contaCredito === codigo ? Number(l.valor) : 0), 0);
+  const ini = Number((saldos?.[codigo] || {}).credor || 0);
+  return mov + ini;
+}
+
+// Saldo de uma conta respeitando sua natureza (Devedora/Credora), somando saldo
+// inicial + movimentação do período — mesma regra do sistema em HTML único.
+function saldoConta(lancamentos, saldos, codigo) {
+  const conta = CONTA_BY_CODE[codigo];
+  const deb = totalDebConta(lancamentos, saldos, codigo);
+  const cred = totalCredConta(lancamentos, saldos, codigo);
+  if (!conta) return { deb, cred, dev: 0, cre: 0 };
+  if (conta.natureza === "Devedora") {
+    return deb >= cred ? { deb, cred, dev: deb - cred, cre: 0 } : { deb, cred, dev: 0, cre: cred - deb };
+  } else if (conta.natureza === "Credora") {
+    return cred >= deb ? { deb, cred, dev: 0, cre: cred - deb } : { deb, cred, dev: deb - cred, cre: 0 };
+  }
+  return deb >= cred ? { deb, cred, dev: deb - cred, cre: 0 } : { deb, cred, dev: 0, cre: cred - deb };
 }
 
 // ============================================================================
@@ -188,17 +239,24 @@ function useListaUsuarios(refreshKey) {
   return lista;
 }
 
-function useSharedList(key) {
+// defaultValue: [] para listas (turmas, empresas, lançamentos) ou {} para mapas
+// (saldos iniciais por código de conta). key=null/undefined pula a busca — usado
+// quando ainda não há uma empresa ativa selecionada (módulos da Fase 2).
+function useSharedList(key, defaultValue = []) {
   const [valor, setValor] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
   useEffect(() => {
+    if (!key) {
+      setValor(null);
+      return;
+    }
     let vivo = true;
     (async () => {
       try {
         const r = await window.storage.get(key, true);
-        if (vivo) setValor(r ? JSON.parse(r.value) : []);
+        if (vivo) setValor(r ? JSON.parse(r.value) : defaultValue);
       } catch {
-        if (vivo) setValor([]);
+        if (vivo) setValor(defaultValue);
       }
     })();
     return () => {
@@ -208,6 +266,7 @@ function useSharedList(key) {
 
   const salvar = useCallback(
     async (novo) => {
+      if (!key) return;
       setValor(novo);
       try {
         await window.storage.set(key, JSON.stringify(novo), true);
@@ -619,6 +678,19 @@ function Layout({ perfil, aba, setAba, children }) {
             </button>
           )}
 
+          <div className="px-5 pt-4 pb-1 text-[11px] uppercase tracking-wide text-white/40">Ciclo Contábil</div>
+          {EMPRESA_ITENS.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => irPara(item.id)}
+              className={`w-full flex items-center gap-3 px-5 py-2.5 text-sm text-left hover:bg-white/10 ${
+                aba === item.id ? "bg-white/10 text-gold font-semibold" : "text-white/85"
+              }`}
+            >
+              <item.icon size={17} /> {item.label}
+            </button>
+          ))}
+
           <div className="px-5 pt-4 pb-1 text-[11px] uppercase tracking-wide text-white/40">
             Módulos (próximas fases)
           </div>
@@ -663,7 +735,9 @@ function Capa({ perfil, setAba, contagens }) {
         <h1 className="text-2xl font-serif font-semibold text-ink">Sistema de Escrituração Contábil</h1>
         <p className="text-sm text-inkSoft mt-1 max-w-2xl">
           Bem-vindo(a), {perfil?.nome}. A plataforma está em migração para React + Firebase — a fundação
-          (login, turmas, empresas e usuários) já está no ar e sincronizada em qualquer dispositivo.
+          (login, turmas, empresas e usuários) e o ciclo contábil básico (Plano de Contas, Saldos
+          Iniciais, Lançamentos e Consulta por Conta) já estão no ar e sincronizados em qualquer
+          dispositivo.
         </p>
       </div>
 
@@ -701,7 +775,7 @@ function Capa({ perfil, setAba, contagens }) {
           ))}
         </div>
         <div className="text-xs text-inkSoft mt-4">
-          Os módulos de Lançamentos, Balancete, DRE, Balanço Patrimonial e demais telas do ciclo contábil chegam
+          Os módulos de Balancete, DRE, Balanço Patrimonial e demais telas do ciclo contábil chegam
           nas próximas fases da migração — já estão listados no menu como "em breve".
         </div>
       </Card>
@@ -948,6 +1022,674 @@ function GestaoEmpresasView({ perfil, empresas, salvarEmpresas }) {
 }
 
 // ============================================================================
+// CICLO CONTÁBIL (Fase 2) — Plano de Contas, Saldos Iniciais, Lançamentos e
+// Consulta por Conta. Os três últimos trabalham sempre "dentro" de uma
+// empresa ativa, escolhida no seletor abaixo (SeletorEmpresaAtiva).
+// ============================================================================
+
+const TIPOS_OPERACAO = ["Compra", "Venda"];
+const SUGESTAO_HISTORICO = {
+  Compra: "Compra de mercadorias/produtos",
+  Venda: "Venda de mercadorias/produtos",
+};
+
+function SeletorEmpresaAtiva({ empresas, empresaAtivaId, setEmpresaAtivaId }) {
+  return (
+    <Card className="mb-4">
+      <Field
+        label="Empresa ativa"
+        hint="Os módulos de Saldos, Lançamentos e Consulta por Conta trabalham sempre com os dados desta empresa."
+      >
+        <SelectInput value={empresaAtivaId || ""} onChange={(e) => setEmpresaAtivaId(e.target.value || null)}>
+          <option value="">— Selecione uma empresa —</option>
+          {(empresas || []).map((em) => (
+            <option key={em.id} value={em.id}>
+              {em.nome}
+            </option>
+          ))}
+        </SelectInput>
+      </Field>
+    </Card>
+  );
+}
+
+function ContaSelect({ value, onChange, required }) {
+  const byGrupo = {};
+  LEAVES.forEach((c) => {
+    (byGrupo[c.grupo] = byGrupo[c.grupo] || []).push(c);
+  });
+  return (
+    <SelectInput value={value} onChange={onChange} required={required}>
+      <option value="">Selecione...</option>
+      {GRUPOS.filter((g) => byGrupo[g]).map((g) => (
+        <optgroup key={g} label={g}>
+          {byGrupo[g].map((c) => (
+            <option key={c.codigo} value={c.codigo}>
+              {c.codigo} — {c.nome}
+            </option>
+          ))}
+        </optgroup>
+      ))}
+    </SelectInput>
+  );
+}
+
+function PillNatureza({ natureza }) {
+  const tone = natureza === "Devedora" ? "green" : natureza === "Credora" ? "gold" : "red";
+  return <Pill tone={tone}>{natureza}</Pill>;
+}
+
+// ---- Plano de Contas (somente leitura — base curricular do curso) ----
+
+function GestaoPlanoContasView() {
+  const [filtro, setFiltro] = useState("");
+  const linhas = CONTAS.filter((c) => {
+    if (!filtro) return true;
+    const f = filtro.toLowerCase();
+    return c.codigo.toLowerCase().includes(f) || c.nome.toLowerCase().includes(f);
+  });
+
+  return (
+    <div>
+      <h2 className="text-lg font-serif font-semibold text-ink mb-1">Plano de Contas</h2>
+      <p className="text-sm text-inkSoft mb-4">
+        292 contas · estrutura completa. Quanto mais números no código, maior o nível de
+        detalhamento — lançamentos ocorrem apenas nas contas analíticas ou subcontas (nível 4 ou
+        5). O plano de contas é único e compartilhado por todas as empresas cadastradas.
+      </p>
+
+      <Card className="mb-4">
+        <TxtInput
+          placeholder="Buscar por código ou nome..."
+          value={filtro}
+          onChange={(e) => setFiltro(e.target.value)}
+        />
+      </Card>
+
+      <Card className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs text-inkSoft border-b border-line">
+              <th className="py-2 pr-3">Código</th>
+              <th className="py-2 pr-3">Conta</th>
+              <th className="py-2 pr-3">Nível</th>
+              <th className="py-2 pr-3">Grupo</th>
+              <th className="py-2 pr-3">Natureza</th>
+              <th className="py-2 pr-3">Lanç.?</th>
+            </tr>
+          </thead>
+          <tbody>
+            {linhas.map((c) => (
+              <tr
+                key={c.codigo}
+                className={"border-b border-line/50 " + (c.nivel <= 2 ? "font-semibold" : "")}
+              >
+                <td className="py-1.5 pr-3 font-mono text-xs whitespace-nowrap">{c.codigo}</td>
+                <td className="py-1.5 pr-3" style={{ paddingLeft: (c.nivel - 1) * 14 }}>
+                  {c.nome}
+                </td>
+                <td className="py-1.5 pr-3">{c.nivel}</td>
+                <td className="py-1.5 pr-3">{c.grupo}</td>
+                <td className="py-1.5 pr-3">
+                  <PillNatureza natureza={c.natureza} />
+                </td>
+                <td className="py-1.5 pr-3">{c.aceitaLancamento ? <Pill tone="green">Sim</Pill> : "—"}</td>
+              </tr>
+            ))}
+            {linhas.length === 0 && (
+              <tr>
+                <td colSpan={6} className="py-4 text-center text-inkSoft italic">
+                  Nenhuma conta encontrada.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </Card>
+    </div>
+  );
+}
+
+// ---- Saldos Iniciais (por empresa ativa) ----
+
+function GestaoSaldosView({ empresa, saldos, salvarSaldos }) {
+  const [filtro, setFiltro] = useState("");
+  const [rascunho, setRascunho] = useState(saldos || {});
+
+  useEffect(() => {
+    setRascunho(saldos || {});
+  }, [saldos]);
+
+  if (!empresa) {
+    return <div className="text-sm text-inkSoft italic">Selecione uma empresa ativa acima para ver os saldos.</div>;
+  }
+
+  const linhas = LEAVES.filter((c) => {
+    if (!filtro) return true;
+    const f = filtro.toLowerCase();
+    return c.codigo.toLowerCase().includes(f) || c.nome.toLowerCase().includes(f);
+  });
+
+  const totDev = LEAVES.reduce((s, c) => s + Number((rascunho[c.codigo] || {}).devedor || 0), 0);
+  const totCred = LEAVES.reduce((s, c) => s + Number((rascunho[c.codigo] || {}).credor || 0), 0);
+  const bateOk = Math.abs(totDev - totCred) < 0.005;
+
+  const mudar = (codigo, lado, valor) => {
+    setRascunho((r) => ({
+      ...r,
+      [codigo]: { ...(r[codigo] || { devedor: 0, credor: 0 }), [lado]: valor === "" ? 0 : Number(valor) },
+    }));
+  };
+
+  const salvar = async () => {
+    await salvarSaldos(rascunho);
+    alert("Saldos iniciais salvos.");
+  };
+
+  return (
+    <div>
+      <h2 className="text-lg font-serif font-semibold text-ink mb-1">Saldos Iniciais — {empresa.nome}</h2>
+      <p className="text-sm text-inkSoft mb-4">
+        Preencha o saldo devedor OU credor de cada conta no início do período (deixe em branco as
+        que não tiverem saldo).
+      </p>
+
+      <Card className="mb-4 flex flex-col sm:flex-row gap-2 sm:items-center">
+        <TxtInput
+          placeholder="Buscar por código ou nome..."
+          value={filtro}
+          onChange={(e) => setFiltro(e.target.value)}
+          className="flex-1"
+        />
+        <Botao onClick={salvar}>Salvar saldos iniciais</Botao>
+      </Card>
+
+      <Card className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs text-inkSoft border-b border-line">
+              <th className="py-2 pr-3">Código</th>
+              <th className="py-2 pr-3">Conta</th>
+              <th className="py-2 pr-3">Natureza</th>
+              <th className="py-2 pr-3 text-right">Saldo Devedor</th>
+              <th className="py-2 pr-3 text-right">Saldo Credor</th>
+            </tr>
+          </thead>
+          <tbody>
+            {linhas.map((c) => {
+              const cur = rascunho[c.codigo] || {};
+              return (
+                <tr key={c.codigo} className="border-b border-line/50">
+                  <td className="py-1.5 pr-3 font-mono text-xs whitespace-nowrap">{c.codigo}</td>
+                  <td className="py-1.5 pr-3">{c.nome}</td>
+                  <td className="py-1.5 pr-3">
+                    <PillNatureza natureza={c.natureza} />
+                  </td>
+                  <td className="py-1.5 pr-3 text-right">
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={cur.devedor || ""}
+                      onChange={(e) => mudar(c.codigo, "devedor", e.target.value)}
+                      className="w-28 text-right border border-line rounded px-2 py-1 text-sm outline-none focus:border-green focus:ring-1 focus:ring-green"
+                    />
+                  </td>
+                  <td className="py-1.5 pr-3 text-right">
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={cur.credor || ""}
+                      onChange={(e) => mudar(c.codigo, "credor", e.target.value)}
+                      className="w-28 text-right border border-line rounded px-2 py-1 text-sm outline-none focus:border-green focus:ring-1 focus:ring-green"
+                    />
+                  </td>
+                </tr>
+              );
+            })}
+            {linhas.length === 0 && (
+              <tr>
+                <td colSpan={5} className="py-4 text-center text-inkSoft italic">
+                  Nenhuma conta encontrada.
+                </td>
+              </tr>
+            )}
+          </tbody>
+          <tfoot>
+            <tr className="font-semibold">
+              <td colSpan={3} className="py-2 pr-3">
+                TOTAIS
+              </td>
+              <td className="py-2 pr-3 text-right">{numFmt(totDev)}</td>
+              <td className="py-2 pr-3 text-right">{numFmt(totCred)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </Card>
+
+      <div className="text-sm mt-3">
+        Verificação: devedores = credores →{" "}
+        {bateOk ? (
+          <span className="text-green font-semibold">OK</span>
+        ) : (
+          <span className="text-red font-semibold">DIVERGENTE</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---- Lançamentos (Livro Diário — por empresa ativa) ----
+
+function GestaoLancamentosView({ empresa, perfil, lancamentos, salvarLancamentos }) {
+  const podeExcluir = !!perfil?.permissoes?.excluirLancamentos;
+
+  const formVazio = () => ({
+    data: new Date().toISOString().slice(0, 10),
+    tipoOperacao: "",
+    historico: "",
+    contaDebito: "",
+    contaCredito: "",
+    valor: "",
+    documento: "",
+    observacoes: "",
+  });
+
+  const [form, setForm] = useState(formVazio());
+  const [editandoId, setEditandoId] = useState(null);
+  const [erro, setErro] = useState("");
+  const [filtroTexto, setFiltroTexto] = useState("");
+  const [filtroTipo, setFiltroTipo] = useState("");
+
+  if (!empresa) {
+    return (
+      <div className="text-sm text-inkSoft italic">Selecione uma empresa ativa acima para lançar.</div>
+    );
+  }
+
+  const lanc = lancamentos || [];
+  const totalPeriodo = lanc.reduce((s, l) => s + Number(l.valor), 0);
+
+  const filtrados = lanc.filter((l) => {
+    if (filtroTipo && l.tipoOperacao !== filtroTipo) return false;
+    if (filtroTexto) {
+      const alvo = `${l.historico} ${l.contaDebito} ${l.contaCredito} ${l.documento || ""} ${l.observacoes || ""}`.toLowerCase();
+      if (!alvo.includes(filtroTexto.toLowerCase())) return false;
+    }
+    return true;
+  });
+
+  const editar = (l) => {
+    if (!podeExcluir) {
+      alert("Você não tem permissão para editar lançamentos.");
+      return;
+    }
+    setEditandoId(l.id);
+    setForm({
+      data: l.data,
+      tipoOperacao: l.tipoOperacao || "",
+      historico: l.historico,
+      contaDebito: l.contaDebito,
+      contaCredito: l.contaCredito,
+      valor: l.valor,
+      documento: l.documento || "",
+      observacoes: l.observacoes || "",
+    });
+    setErro("");
+  };
+
+  const cancelar = () => {
+    setEditandoId(null);
+    setForm(formVazio());
+    setErro("");
+  };
+
+  const excluir = async (l) => {
+    if (!podeExcluir) {
+      alert("Você não tem permissão para excluir lançamentos.");
+      return;
+    }
+    if (!confirm(`Excluir o lançamento "${l.historico}"? Esta ação não pode ser desfeita.`)) return;
+    await salvarLancamentos(lanc.filter((x) => x.id !== l.id));
+    if (editandoId === l.id) cancelar();
+  };
+
+  const salvar = async (e) => {
+    e.preventDefault();
+    if (form.contaDebito === form.contaCredito) {
+      setErro("A conta de débito e a de crédito não podem ser iguais.");
+      return;
+    }
+    if (!form.contaDebito || !form.contaCredito || !form.valor || !form.historico.trim() || !form.data) {
+      setErro("Preencha data, histórico, as duas contas e o valor.");
+      return;
+    }
+    setErro("");
+    const dados = { ...form, valor: Number(form.valor), tipoOperacao: form.tipoOperacao || undefined };
+    if (editandoId) {
+      await salvarLancamentos(lanc.map((l) => (l.id === editandoId ? { ...l, ...dados } : l)));
+    } else {
+      await salvarLancamentos([...lanc, { id: uid("l"), usuarioId: perfil?.uid, ...dados }]);
+    }
+    cancelar();
+  };
+
+  return (
+    <div>
+      <h2 className="text-lg font-serif font-semibold text-ink mb-1">
+        {editandoId ? "Editar lançamento" : "Novo lançamento"} — {empresa.nome}
+      </h2>
+      <p className="text-sm text-inkSoft mb-4">
+        Toda operação exige uma conta a débito e uma conta a crédito, sempre no mesmo valor
+        (partidas dobradas).
+      </p>
+
+      <Card className="mb-4">
+        <form onSubmit={salvar} className="grid sm:grid-cols-2 gap-3">
+          <Field label="Data">
+            <TxtInput type="date" required value={form.data} onChange={(e) => setForm({ ...form, data: e.target.value })} />
+          </Field>
+          <Field label="Tipo de operação (opcional)">
+            <SelectInput
+              value={form.tipoOperacao}
+              onChange={(e) => {
+                const tipo = e.target.value;
+                setForm((f) => ({
+                  ...f,
+                  tipoOperacao: tipo,
+                  historico: f.historico.trim() ? f.historico : SUGESTAO_HISTORICO[tipo] || "",
+                }));
+              }}
+            >
+              <option value="">Selecione (opcional)...</option>
+              {TIPOS_OPERACAO.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </SelectInput>
+          </Field>
+          <div className="sm:col-span-2">
+            <Field label="Histórico do fato contábil">
+              <TxtInput
+                required
+                placeholder="Ex.: Venda de mercadorias à vista"
+                value={form.historico}
+                onChange={(e) => setForm({ ...form, historico: e.target.value })}
+              />
+            </Field>
+          </div>
+          <Field label="Conta débito">
+            <ContaSelect required value={form.contaDebito} onChange={(e) => setForm({ ...form, contaDebito: e.target.value })} />
+          </Field>
+          <Field label="Conta crédito">
+            <ContaSelect required value={form.contaCredito} onChange={(e) => setForm({ ...form, contaCredito: e.target.value })} />
+          </Field>
+          <Field label="Valor (R$)">
+            <TxtInput
+              type="number"
+              step="0.01"
+              min="0.01"
+              required
+              placeholder="0,00"
+              value={form.valor}
+              onChange={(e) => setForm({ ...form, valor: e.target.value })}
+            />
+          </Field>
+          <Field label="Documento">
+            <TxtInput
+              placeholder="Ex.: NF 1234"
+              value={form.documento}
+              onChange={(e) => setForm({ ...form, documento: e.target.value })}
+            />
+          </Field>
+          <div className="sm:col-span-2">
+            <Field label="Observações">
+              <TxtInput
+                placeholder="Informações complementares do lançamento"
+                value={form.observacoes}
+                onChange={(e) => setForm({ ...form, observacoes: e.target.value })}
+              />
+            </Field>
+          </div>
+          {erro && <div className="sm:col-span-2 text-sm text-red">{erro}</div>}
+          <div className="sm:col-span-2 flex gap-2">
+            <Botao type="submit">{editandoId ? "Salvar alterações" : "Adicionar lançamento"}</Botao>
+            {editandoId && (
+              <Botao type="button" variant="ghost" onClick={cancelar}>
+                Cancelar edição
+              </Botao>
+            )}
+          </div>
+        </form>
+      </Card>
+
+      <Card>
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <h3 className="font-serif font-semibold text-ink">
+            Livro Diário <span className="text-inkSoft font-normal text-sm">({lanc.length})</span>
+          </h3>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-2 mb-3">
+          <TxtInput
+            placeholder="Buscar por histórico, conta, documento ou observação..."
+            value={filtroTexto}
+            onChange={(e) => setFiltroTexto(e.target.value)}
+            className="flex-1"
+          />
+          <SelectInput value={filtroTipo} onChange={(e) => setFiltroTipo(e.target.value)} className="sm:max-w-[180px]">
+            <option value="">Todos os tipos</option>
+            {TIPOS_OPERACAO.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </SelectInput>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs text-inkSoft border-b border-line">
+                <th className="py-2 pr-3">Data</th>
+                <th className="py-2 pr-3">Tipo</th>
+                <th className="py-2 pr-3">Histórico</th>
+                <th className="py-2 pr-3">Débito</th>
+                <th className="py-2 pr-3">Crédito</th>
+                <th className="py-2 pr-3 text-right">Valor</th>
+                <th className="py-2 pr-3">Documento</th>
+                <th className="py-2 pr-3"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtrados.map((l) => (
+                <tr key={l.id} className="border-b border-line/50 align-top">
+                  <td className="py-1.5 pr-3 whitespace-nowrap">{fmtDate(l.data)}</td>
+                  <td className="py-1.5 pr-3">{l.tipoOperacao ? <Pill tone="gold">{l.tipoOperacao}</Pill> : "—"}</td>
+                  <td className="py-1.5 pr-3">
+                    {l.historico}
+                    {l.observacoes && <div className="text-xs text-inkSoft">{l.observacoes}</div>}
+                  </td>
+                  <td className="py-1.5 pr-3 font-mono text-xs" title={CONTA_BY_CODE[l.contaDebito]?.nome}>
+                    {l.contaDebito}
+                  </td>
+                  <td className="py-1.5 pr-3 font-mono text-xs" title={CONTA_BY_CODE[l.contaCredito]?.nome}>
+                    {l.contaCredito}
+                  </td>
+                  <td className="py-1.5 pr-3 text-right whitespace-nowrap">{money(l.valor)}</td>
+                  <td className="py-1.5 pr-3">{l.documento}</td>
+                  <td className="py-1.5 pr-3 whitespace-nowrap">
+                    {podeExcluir && (
+                      <div className="flex gap-2">
+                        <button onClick={() => editar(l)} className="text-inkSoft hover:text-ink" title="Editar">
+                          <Pencil size={14} />
+                        </button>
+                        <button onClick={() => excluir(l)} className="text-red hover:opacity-70" title="Excluir">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {filtrados.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="py-4 text-center text-inkSoft italic">
+                    {lanc.length ? "Nenhum lançamento corresponde à busca." : "Nenhum lançamento registrado ainda para esta empresa."}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+            {lanc.length > 0 && (
+              <tfoot>
+                <tr className="font-semibold">
+                  <td colSpan={5} className="py-2 pr-3">
+                    TOTAL LANÇADO NO PERÍODO
+                  </td>
+                  <td className="py-2 pr-3 text-right whitespace-nowrap">{money(totalPeriodo)}</td>
+                  <td colSpan={2}></td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+        {!podeExcluir && (
+          <div className="text-xs text-inkSoft mt-3">
+            Você não tem permissão para editar ou excluir lançamentos. Peça a um usuário <b>Mestre</b> ou{" "}
+            <b>Professor</b>.
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+// ---- Consulta por Conta (Razão — por empresa ativa) ----
+
+function GestaoConsultaView({ empresa, lancamentos, saldos }) {
+  const [codigo, setCodigo] = useState(LEAVES[0].codigo);
+
+  if (!empresa) {
+    return <div className="text-sm text-inkSoft italic">Selecione uma empresa ativa acima para consultar.</div>;
+  }
+
+  const lanc = lancamentos || [];
+  const sal = saldos || {};
+  const conta = CONTA_BY_CODE[codigo];
+
+  const movs = lanc
+    .filter((l) => l.contaDebito === codigo || l.contaCredito === codigo)
+    .slice()
+    .sort((a, b) => a.data.localeCompare(b.data));
+
+  const ini = conta
+    ? conta.natureza === "Credora"
+      ? Number((sal[codigo] || {}).credor || 0) - Number((sal[codigo] || {}).devedor || 0)
+      : Number((sal[codigo] || {}).devedor || 0) - Number((sal[codigo] || {}).credor || 0)
+    : 0;
+
+  let saldoAcumulado = ini;
+  const linhas = movs.map((l) => {
+    const isDeb = l.contaDebito === codigo;
+    const efeito = conta && conta.natureza === "Credora" ? (isDeb ? -1 : 1) : isDeb ? 1 : -1;
+    saldoAcumulado += efeito * Number(l.valor);
+    return { l, isDeb, saldoAcumulado };
+  });
+
+  const s = saldoConta(lanc, sal, codigo);
+
+  return (
+    <div>
+      <h2 className="text-lg font-serif font-semibold text-ink mb-1">Consulta por Conta — {empresa.nome}</h2>
+      <p className="text-sm text-inkSoft mb-4">
+        Extrato (razão) individual de qualquer conta, com saldo acumulado — como um extrato
+        bancário.
+      </p>
+
+      <Card className="mb-4 max-w-md">
+        <Field label="Conta">
+          <ContaSelect value={codigo} onChange={(e) => setCodigo(e.target.value)} />
+        </Field>
+      </Card>
+
+      <Card className="mb-4">
+        <h3 className="font-serif font-semibold text-ink mb-1">{conta ? `${conta.codigo} — ${conta.nome}` : ""}</h3>
+        <div className="mb-3">{conta && <PillNatureza natureza={conta.natureza} />}</div>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div>
+            <div className="text-xs text-inkSoft">Total de Débitos</div>
+            <div className="font-semibold text-ink">{money(s.deb)}</div>
+          </div>
+          <div>
+            <div className="text-xs text-inkSoft">Total de Créditos</div>
+            <div className="font-semibold text-ink">{money(s.cred)}</div>
+          </div>
+          <div>
+            <div className="text-xs text-inkSoft">Saldo Devedor</div>
+            <div className="font-semibold text-ink">{s.dev ? money(s.dev) : "—"}</div>
+          </div>
+          <div>
+            <div className="text-xs text-inkSoft">Saldo Credor</div>
+            <div className="font-semibold text-ink">{s.cre ? money(s.cre) : "—"}</div>
+          </div>
+          <div>
+            <div className="text-xs text-inkSoft">Lançamentos</div>
+            <div className="font-semibold text-ink">{movs.length}</div>
+          </div>
+        </div>
+      </Card>
+
+      <Card className="overflow-x-auto">
+        <h3 className="font-serif font-semibold text-ink mb-3">Extrato (razão) — saldo acumulado</h3>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs text-inkSoft border-b border-line">
+              <th className="py-2 pr-3">Data</th>
+              <th className="py-2 pr-3">Histórico</th>
+              <th className="py-2 pr-3">Contrapartida</th>
+              <th className="py-2 pr-3 text-right">Débito</th>
+              <th className="py-2 pr-3 text-right">Crédito</th>
+              <th className="py-2 pr-3 text-right">Saldo Acumulado</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr className="border-b border-line/50 italic text-inkSoft">
+              <td className="py-1.5 pr-3" colSpan={5}>
+                Saldo inicial
+              </td>
+              <td className="py-1.5 pr-3 text-right">{numFmt(ini)}</td>
+            </tr>
+            {linhas.map(({ l, isDeb, saldoAcumulado: acumulado }) => {
+              const contraCod = isDeb ? l.contaCredito : l.contaDebito;
+              const contra = CONTA_BY_CODE[contraCod];
+              return (
+                <tr key={l.id} className="border-b border-line/50">
+                  <td className="py-1.5 pr-3 whitespace-nowrap">{fmtDate(l.data)}</td>
+                  <td className="py-1.5 pr-3">{l.historico}</td>
+                  <td className="py-1.5 pr-3 font-mono text-xs" title={contra?.nome}>
+                    {contraCod}
+                  </td>
+                  <td className="py-1.5 pr-3 text-right">{isDeb ? numFmt(l.valor) : "—"}</td>
+                  <td className="py-1.5 pr-3 text-right">{!isDeb ? numFmt(l.valor) : "—"}</td>
+                  <td className="py-1.5 pr-3 text-right">{numFmt(acumulado)}</td>
+                </tr>
+              );
+            })}
+            {linhas.length === 0 && (
+              <tr>
+                <td colSpan={6} className="py-4 text-center text-inkSoft italic">
+                  Nenhum lançamento para esta conta no período.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </Card>
+    </div>
+  );
+}
+
+// ============================================================================
 // GESTÃO — USUÁRIOS (e Aprovações)
 // ============================================================================
 
@@ -1182,6 +1924,16 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
   const usuarios = useListaUsuarios(refreshUsuarios);
   const recarregarUsuarios = useCallback(() => setRefreshUsuarios((k) => k + 1), []);
 
+  // Empresa ativa (Fase 2) — Saldos, Lançamentos e Consulta trabalham sempre
+  // com os dados desta empresa. Escolha válida apenas durante a sessão atual.
+  const [empresaAtivaId, setEmpresaAtivaId] = useState(null);
+  const empresaAtiva = (empresas || []).find((e) => e.id === empresaAtivaId) || null;
+  const [saldos, salvarSaldos] = useSharedList(empresaAtivaId ? `saldos_${empresaAtivaId}` : null, {});
+  const [lancamentos, salvarLancamentos] = useSharedList(
+    empresaAtivaId ? `lancamentos_${empresaAtivaId}` : null,
+    []
+  );
+
   const moduloFuturo = MODULOS_FUTUROS.find((m) => m.id === aba);
 
   const contagens = {
@@ -1211,6 +1963,30 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
       )}
       {aba === "aprovacoes" && (
         <GestaoAprovacoesView usuarios={usuarios} turmas={turmas} recarregar={recarregarUsuarios} />
+      )}
+      {aba === "plano-contas" && <GestaoPlanoContasView />}
+      {aba === "saldos" && (
+        <>
+          <SeletorEmpresaAtiva empresas={empresas} empresaAtivaId={empresaAtivaId} setEmpresaAtivaId={setEmpresaAtivaId} />
+          <GestaoSaldosView empresa={empresaAtiva} saldos={saldos} salvarSaldos={salvarSaldos} />
+        </>
+      )}
+      {aba === "lancamentos" && (
+        <>
+          <SeletorEmpresaAtiva empresas={empresas} empresaAtivaId={empresaAtivaId} setEmpresaAtivaId={setEmpresaAtivaId} />
+          <GestaoLancamentosView
+            empresa={empresaAtiva}
+            perfil={perfil}
+            lancamentos={lancamentos}
+            salvarLancamentos={salvarLancamentos}
+          />
+        </>
+      )}
+      {aba === "razao" && (
+        <>
+          <SeletorEmpresaAtiva empresas={empresas} empresaAtivaId={empresaAtivaId} setEmpresaAtivaId={setEmpresaAtivaId} />
+          <GestaoConsultaView empresa={empresaAtiva} lancamentos={lancamentos} saldos={saldos} />
+        </>
       )}
       {moduloFuturo && <ModuloEmBreve modulo={moduloFuturo} />}
     </Layout>
