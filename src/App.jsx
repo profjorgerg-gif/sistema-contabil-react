@@ -9,7 +9,7 @@ import {
   observarSessao, cadastrar, entrar, sair, recuperarSenha, traduzErroAuth, CODIGO_MESTRE,
 } from "./firebaseAuth";
 import { LOGO_CEDUP } from "./logo";
-import { CONTAS, LEAVES, CONTA_BY_CODE, GRUPOS } from "./contas";
+import { CONTAS, GRUPOS } from "./contas";
 
 // ============================================================================
 // CONSTANTES
@@ -136,8 +136,8 @@ function totalCredConta(lancamentos, saldos, codigo) {
 
 // Saldo de uma conta respeitando sua natureza (Devedora/Credora), somando saldo
 // inicial + movimentação do período — mesma regra do sistema em HTML único.
-function saldoConta(lancamentos, saldos, codigo) {
-  const conta = CONTA_BY_CODE[codigo];
+function saldoConta(lancamentos, saldos, contaByCode, codigo) {
+  const conta = contaByCode[codigo];
   const deb = totalDebConta(lancamentos, saldos, codigo);
   const cred = totalCredConta(lancamentos, saldos, codigo);
   if (!conta) return { deb, cred, dev: 0, cre: 0 };
@@ -1113,7 +1113,7 @@ function SeletorEmpresaAtiva({ empresas, empresaAtivaId, setEmpresaAtivaId }) {
 // Campo de conta com busca por código ou nome (em vez de rolar uma lista com
 // 292 itens). Mantém a mesma "forma" de evento (onChange recebe {target:{value}})
 // para funcionar como substituto direto de um <select> nos formulários.
-function ContaSelect({ value, onChange }) {
+function ContaSelect({ value, onChange, leaves, contaByCode }) {
   const [aberto, setAberto] = useState(false);
   const [busca, setBusca] = useState("");
   const wrapRef = useRef(null);
@@ -1129,12 +1129,12 @@ function ContaSelect({ value, onChange }) {
     return () => document.removeEventListener("mousedown", aoClicarFora);
   }, []);
 
-  const contaSelecionada = CONTA_BY_CODE[value];
+  const contaSelecionada = contaByCode[value];
   const rotuloSelecionado = contaSelecionada ? `${contaSelecionada.codigo} — ${contaSelecionada.nome}` : "";
 
   const termo = busca.trim().toLowerCase();
   const byGrupo = {};
-  LEAVES.forEach((c) => {
+  leaves.forEach((c) => {
     if (termo && !c.codigo.toLowerCase().includes(termo) && !c.nome.toLowerCase().includes(termo)) return;
     (byGrupo[c.grupo] = byGrupo[c.grupo] || []).push(c);
   });
@@ -1195,32 +1195,201 @@ function PillNatureza({ natureza }) {
   return <Pill tone={tone}>{natureza}</Pill>;
 }
 
-// ---- Plano de Contas (somente leitura — base curricular do curso) ----
+// ---- Plano de Contas (editável pelo Mestre — com histórico de alterações) ----
 
-function GestaoPlanoContasView() {
+function nivelDoCodigo(codigo) {
+  return codigo.split(".").length;
+}
+
+function tipoSugerido(nivel) {
+  return { 1: "Grupo", 2: "Subgrupo", 3: "Conta Sintética", 4: "Conta Analítica", 5: "Subconta Analítica" }[nivel] || "Conta Analítica";
+}
+
+function GestaoPlanoContasView({ perfil, contas, salvarPlanoContas, auditoria, registrarAuditoria }) {
+  const podeEditar = perfil?.tipo === "Mestre";
   const [filtro, setFiltro] = useState("");
-  const linhas = CONTAS.filter((c) => {
+  const [mostrarForm, setMostrarForm] = useState(false);
+  const [editandoCodigo, setEditandoCodigo] = useState(null); // código não muda numa edição
+  const [erro, setErro] = useState("");
+
+  const formVazio = () => ({
+    codigo: "",
+    nome: "",
+    grupo: GRUPOS[0],
+    tipo: "Conta Analítica",
+    natureza: "Devedora",
+    aceitaLancamento: true,
+  });
+  const [form, setForm] = useState(formVazio());
+
+  const linhas = contas.filter((c) => {
     if (!filtro) return true;
     const f = filtro.toLowerCase();
     return c.codigo.toLowerCase().includes(f) || c.nome.toLowerCase().includes(f);
   });
 
+  const iniciarNovo = () => {
+    setEditandoCodigo(null);
+    setForm(formVazio());
+    setErro("");
+    setMostrarForm(true);
+  };
+
+  const iniciarEdicao = (c) => {
+    setEditandoCodigo(c.codigo);
+    setForm({ codigo: c.codigo, nome: c.nome, grupo: c.grupo, tipo: c.tipo, natureza: c.natureza, aceitaLancamento: c.aceitaLancamento });
+    setErro("");
+    setMostrarForm(true);
+  };
+
+  const cancelar = () => {
+    setMostrarForm(false);
+    setEditandoCodigo(null);
+    setForm(formVazio());
+    setErro("");
+  };
+
+  const salvar = async (e) => {
+    e.preventDefault();
+    const codigo = form.codigo.trim();
+    if (!codigo || !form.nome.trim()) {
+      setErro("Preencha código e nome.");
+      return;
+    }
+    if (!/^[0-9]+(\.[0-9]+)*$/.test(codigo)) {
+      setErro('Use o formato de código com números separados por ponto, ex.: "1.1.1.01".');
+      return;
+    }
+    setErro("");
+
+    const nivel = nivelDoCodigo(codigo);
+    const dados = {
+      codigo,
+      nome: form.nome.trim(),
+      nivel,
+      grupo: form.grupo,
+      tipo: form.tipo,
+      natureza: form.natureza,
+      aceitaLancamento: !!form.aceitaLancamento,
+    };
+
+    if (editandoCodigo) {
+      const nova = contas.map((c) => (c.codigo === editandoCodigo ? { ...dados, codigo: editandoCodigo, nivel: nivelDoCodigo(editandoCodigo) } : c));
+      await salvarPlanoContas(nova);
+      await registrarAuditoria("editar", "conta", `Editou a conta ${editandoCodigo} — ${dados.nome}`);
+    } else {
+      if (contas.some((c) => c.codigo === codigo)) {
+        setErro(`Já existe uma conta com o código "${codigo}".`);
+        return;
+      }
+      const nova = [...contas, dados].sort((a, b) => a.codigo.localeCompare(b.codigo, undefined, { numeric: true }));
+      await salvarPlanoContas(nova);
+      await registrarAuditoria("criar", "conta", `Criou a conta ${codigo} — ${dados.nome}`);
+    }
+    cancelar();
+  };
+
+  const excluir = async (c) => {
+    if (
+      !confirm(
+        `Excluir a conta "${c.codigo} — ${c.nome}"?\n\nSe essa conta já foi usada em lançamentos de alguma empresa, esses lançamentos não são apagados, mas passam a exibir apenas o código, sem nome/descrição. Esta ação não pode ser desfeita.`
+      )
+    )
+      return;
+    await salvarPlanoContas(contas.filter((x) => x.codigo !== c.codigo));
+    await registrarAuditoria("excluir", "conta", `Excluiu a conta ${c.codigo} — ${c.nome}`);
+    if (editandoCodigo === c.codigo) cancelar();
+  };
+
+  const historico = (auditoria || []).filter((a) => a.entidade === "conta").slice(0, 30);
+
   return (
     <div>
       <h2 className="text-lg font-serif font-semibold text-ink mb-1">Plano de Contas</h2>
       <p className="text-sm text-inkSoft mb-4">
-        292 contas · estrutura completa. Quanto mais números no código, maior o nível de
-        detalhamento — lançamentos ocorrem apenas nas contas analíticas ou subcontas (nível 4 ou
-        5). O plano de contas é único e compartilhado por todas as empresas cadastradas.
+        {contas.length} contas · estrutura completa. Quanto mais números no código, maior o nível
+        de detalhamento — lançamentos ocorrem apenas nas contas analíticas ou subcontas. O plano de
+        contas é único e compartilhado por todas as empresas cadastradas.
+        {!podeEditar && " Somente um usuário Mestre pode incluir, editar ou excluir contas."}
       </p>
 
-      <Card className="mb-4">
+      <Card className="mb-4 flex flex-col sm:flex-row gap-2 sm:items-center">
         <TxtInput
           placeholder="Buscar por código ou nome..."
           value={filtro}
           onChange={(e) => setFiltro(e.target.value)}
+          className="flex-1"
         />
+        {podeEditar && <Botao onClick={iniciarNovo}>
+          <Plus size={16} /> Nova conta
+        </Botao>}
       </Card>
+
+      {mostrarForm && podeEditar && (
+        <Card className="mb-4">
+          <h3 className="font-serif font-semibold text-ink mb-3">
+            {editandoCodigo ? `Editar conta ${editandoCodigo}` : "Nova conta"}
+          </h3>
+          <form onSubmit={salvar} className="grid sm:grid-cols-2 gap-3">
+            <Field label="Código" hint={editandoCodigo ? "O código não pode ser alterado numa conta já existente." : 'Números separados por ponto, ex.: "1.1.1.08"'}>
+              <TxtInput
+                required
+                disabled={!!editandoCodigo}
+                value={form.codigo}
+                onChange={(e) => setForm({ ...form, codigo: e.target.value })}
+                placeholder="Ex.: 1.1.1.08"
+              />
+            </Field>
+            <Field label="Nome da conta">
+              <TxtInput required value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
+            </Field>
+            <Field label="Grupo">
+              <SelectInput value={form.grupo} onChange={(e) => setForm({ ...form, grupo: e.target.value })}>
+                {GRUPOS.map((g) => (
+                  <option key={g} value={g}>
+                    {g}
+                  </option>
+                ))}
+              </SelectInput>
+            </Field>
+            <Field label="Tipo">
+              <SelectInput value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value })}>
+                {["Grupo", "Subgrupo", "Conta Sintética", "Conta Analítica", "Subconta Analítica"].map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </SelectInput>
+            </Field>
+            <Field label="Natureza">
+              <SelectInput value={form.natureza} onChange={(e) => setForm({ ...form, natureza: e.target.value })}>
+                {["Devedora", "Credora", "Variável", "Compensação"].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </SelectInput>
+            </Field>
+            <Field label="Recebe lançamentos?">
+              <label className="flex items-center gap-2 text-sm text-ink mt-2">
+                <input
+                  type="checkbox"
+                  checked={form.aceitaLancamento}
+                  onChange={(e) => setForm({ ...form, aceitaLancamento: e.target.checked })}
+                />
+                Sim, esta conta pode receber lançamentos diretamente
+              </label>
+            </Field>
+            {erro && <div className="sm:col-span-2 text-sm text-red">{erro}</div>}
+            <div className="sm:col-span-2 flex gap-2">
+              <Botao type="submit">{editandoCodigo ? "Salvar alterações" : "Adicionar conta"}</Botao>
+              <Botao type="button" variant="ghost" onClick={cancelar}>
+                Cancelar
+              </Botao>
+            </div>
+          </form>
+        </Card>
+      )}
 
       <Card className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -1232,6 +1401,7 @@ function GestaoPlanoContasView() {
               <th className="py-2 pr-3">Grupo</th>
               <th className="py-2 pr-3">Natureza</th>
               <th className="py-2 pr-3">Lanç.?</th>
+              {podeEditar && <th className="py-2 pr-3"></th>}
             </tr>
           </thead>
           <tbody>
@@ -1250,11 +1420,23 @@ function GestaoPlanoContasView() {
                   <PillNatureza natureza={c.natureza} />
                 </td>
                 <td className="py-1.5 pr-3">{c.aceitaLancamento ? <Pill tone="green">Sim</Pill> : "—"}</td>
+                {podeEditar && (
+                  <td className="py-1.5 pr-3 whitespace-nowrap">
+                    <div className="flex gap-2">
+                      <button onClick={() => iniciarEdicao(c)} className="text-inkSoft hover:text-ink" title="Editar">
+                        <Pencil size={14} />
+                      </button>
+                      <button onClick={() => excluir(c)} className="text-red hover:opacity-70" title="Excluir">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </td>
+                )}
               </tr>
             ))}
             {linhas.length === 0 && (
               <tr>
-                <td colSpan={6} className="py-4 text-center text-inkSoft italic">
+                <td colSpan={podeEditar ? 7 : 6} className="py-4 text-center text-inkSoft italic">
                   Nenhuma conta encontrada.
                 </td>
               </tr>
@@ -1262,13 +1444,29 @@ function GestaoPlanoContasView() {
           </tbody>
         </table>
       </Card>
+
+      {podeEditar && historico.length > 0 && (
+        <Card className="mt-4">
+          <h3 className="font-serif font-semibold text-ink mb-3">Histórico de alterações neste plano de contas</h3>
+          <div className="space-y-1.5 max-h-64 overflow-y-auto">
+            {historico.map((h) => (
+              <div key={h.id} className="text-xs text-inkSoft flex flex-wrap gap-x-2">
+                <span className="whitespace-nowrap">{fmtDateTime(h.timestamp)}</span>
+                <span>—</span>
+                <span className="font-semibold text-ink">{h.usuarioNome || "—"}:</span>
+                <span>{h.descricao}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
     </div>
   );
 }
 
 // ---- Saldos Iniciais (por empresa ativa) ----
 
-function GestaoSaldosView({ empresa, saldos, salvarSaldos }) {
+function GestaoSaldosView({ empresa, saldos, salvarSaldos, leaves }) {
   const [filtro, setFiltro] = useState("");
   const [rascunho, setRascunho] = useState(saldos || {});
 
@@ -1280,14 +1478,14 @@ function GestaoSaldosView({ empresa, saldos, salvarSaldos }) {
     return <div className="text-sm text-inkSoft italic">Selecione uma empresa ativa acima para ver os saldos.</div>;
   }
 
-  const linhas = LEAVES.filter((c) => {
+  const linhas = leaves.filter((c) => {
     if (!filtro) return true;
     const f = filtro.toLowerCase();
     return c.codigo.toLowerCase().includes(f) || c.nome.toLowerCase().includes(f);
   });
 
-  const totDev = LEAVES.reduce((s, c) => s + Number((rascunho[c.codigo] || {}).devedor || 0), 0);
-  const totCred = LEAVES.reduce((s, c) => s + Number((rascunho[c.codigo] || {}).credor || 0), 0);
+  const totDev = leaves.reduce((s, c) => s + Number((rascunho[c.codigo] || {}).devedor || 0), 0);
+  const totCred = leaves.reduce((s, c) => s + Number((rascunho[c.codigo] || {}).credor || 0), 0);
   const bateOk = Math.abs(totDev - totCred) < 0.005;
 
   const mudar = (codigo, lado, valor) => {
@@ -1398,7 +1596,7 @@ function GestaoSaldosView({ empresa, saldos, salvarSaldos }) {
 
 // ---- Lançamentos (Livro Diário — por empresa ativa) ----
 
-function GestaoLancamentosView({ empresa, perfil, lancamentos, salvarLancamentos }) {
+function GestaoLancamentosView({ empresa, perfil, lancamentos, salvarLancamentos, leaves, contaByCode }) {
   const podeExcluir = !!perfil?.permissoes?.excluirLancamentos;
 
   const formVazio = () => ({
@@ -1537,10 +1735,20 @@ function GestaoLancamentosView({ empresa, perfil, lancamentos, salvarLancamentos
             </Field>
           </div>
           <Field label="Conta débito">
-            <ContaSelect required value={form.contaDebito} onChange={(e) => setForm({ ...form, contaDebito: e.target.value })} />
+            <ContaSelect
+              value={form.contaDebito}
+              onChange={(e) => setForm({ ...form, contaDebito: e.target.value })}
+              leaves={leaves}
+              contaByCode={contaByCode}
+            />
           </Field>
           <Field label="Conta crédito">
-            <ContaSelect required value={form.contaCredito} onChange={(e) => setForm({ ...form, contaCredito: e.target.value })} />
+            <ContaSelect
+              value={form.contaCredito}
+              onChange={(e) => setForm({ ...form, contaCredito: e.target.value })}
+              leaves={leaves}
+              contaByCode={contaByCode}
+            />
           </Field>
           <Field label="Valor (R$)">
             <TxtInput
@@ -1626,10 +1834,10 @@ function GestaoLancamentosView({ empresa, perfil, lancamentos, salvarLancamentos
                     {l.historico}
                     {l.observacoes && <div className="text-xs text-inkSoft">{l.observacoes}</div>}
                   </td>
-                  <td className="py-1.5 pr-3 font-mono text-xs" title={CONTA_BY_CODE[l.contaDebito]?.nome}>
+                  <td className="py-1.5 pr-3 font-mono text-xs" title={contaByCode[l.contaDebito]?.nome}>
                     {l.contaDebito}
                   </td>
-                  <td className="py-1.5 pr-3 font-mono text-xs" title={CONTA_BY_CODE[l.contaCredito]?.nome}>
+                  <td className="py-1.5 pr-3 font-mono text-xs" title={contaByCode[l.contaCredito]?.nome}>
                     {l.contaCredito}
                   </td>
                   <td className="py-1.5 pr-3 text-right whitespace-nowrap">{money(l.valor)}</td>
@@ -1682,8 +1890,8 @@ function GestaoLancamentosView({ empresa, perfil, lancamentos, salvarLancamentos
 
 // ---- Consulta por Conta (Razão — por empresa ativa) ----
 
-function GestaoConsultaView({ empresa, lancamentos, saldos }) {
-  const [codigo, setCodigo] = useState(LEAVES[0].codigo);
+function GestaoConsultaView({ empresa, lancamentos, saldos, leaves, contaByCode }) {
+  const [codigo, setCodigo] = useState(leaves[0]?.codigo || "");
 
   if (!empresa) {
     return <div className="text-sm text-inkSoft italic">Selecione uma empresa ativa acima para consultar.</div>;
@@ -1691,7 +1899,7 @@ function GestaoConsultaView({ empresa, lancamentos, saldos }) {
 
   const lanc = lancamentos || [];
   const sal = saldos || {};
-  const conta = CONTA_BY_CODE[codigo];
+  const conta = contaByCode[codigo];
 
   const movs = lanc
     .filter((l) => l.contaDebito === codigo || l.contaCredito === codigo)
@@ -1712,7 +1920,7 @@ function GestaoConsultaView({ empresa, lancamentos, saldos }) {
     return { l, isDeb, saldoAcumulado };
   });
 
-  const s = saldoConta(lanc, sal, codigo);
+  const s = saldoConta(lanc, sal, contaByCode, codigo);
 
   return (
     <div>
@@ -1724,7 +1932,7 @@ function GestaoConsultaView({ empresa, lancamentos, saldos }) {
 
       <Card className="mb-4 max-w-md">
         <Field label="Conta">
-          <ContaSelect value={codigo} onChange={(e) => setCodigo(e.target.value)} />
+          <ContaSelect value={codigo} onChange={(e) => setCodigo(e.target.value)} leaves={leaves} contaByCode={contaByCode} />
         </Field>
       </Card>
 
@@ -1777,7 +1985,7 @@ function GestaoConsultaView({ empresa, lancamentos, saldos }) {
             </tr>
             {linhas.map(({ l, isDeb, saldoAcumulado: acumulado }) => {
               const contraCod = isDeb ? l.contaCredito : l.contaDebito;
-              const contra = CONTA_BY_CODE[contraCod];
+              const contra = contaByCode[contraCod];
               return (
                 <tr key={l.id} className="border-b border-line/50">
                   <td className="py-1.5 pr-3 whitespace-nowrap">{fmtDate(l.data)}</td>
@@ -1851,12 +2059,12 @@ function SeloFechamento({ ok, rotulo, formula }) {
 
 // ---- Balancete de Verificação ----
 
-function GestaoBalanceteView({ empresa, lancamentos, saldos }) {
+function GestaoBalanceteView({ empresa, lancamentos, saldos, leaves, contaByCode }) {
   if (!empresa) return <div className="text-sm text-inkSoft italic">Selecione uma empresa ativa acima.</div>;
 
   let totDeb = 0, totCred = 0, totDev = 0, totCre = 0;
-  const linhas = LEAVES.map((c) => {
-    const s = saldoConta(lancamentos, saldos, c.codigo);
+  const linhas = leaves.map((c) => {
+    const s = saldoConta(lancamentos, saldos, contaByCode, c.codigo);
     totDeb += s.deb; totCred += s.cred; totDev += s.dev; totCre += s.cre;
     return { c, s };
   }).filter((r) => r.s.deb !== 0 || r.s.cred !== 0);
@@ -2342,6 +2550,35 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
   const usuarios = useListaUsuarios(refreshUsuarios);
   const recarregarUsuarios = useCallback(() => setRefreshUsuarios((k) => k + 1), []);
 
+  // Plano de Contas (editável) — "semeado" a partir de contas.js na primeira
+  // vez que alguém salva uma alteração; até lá, usa a lista padrão do curso.
+  // Cada edição/inclusão/exclusão gera uma entrada de auditoria abaixo.
+  const [planoContasSalvo, salvarPlanoContas] = useSharedList("plano_contas", CONTAS);
+  const contasAtivas = planoContasSalvo && planoContasSalvo.length ? planoContasSalvo : CONTAS;
+  const leavesAtivas = contasAtivas.filter((c) => c.aceitaLancamento);
+  const contaByCodeAtivo = {};
+  contasAtivas.forEach((c) => {
+    contaByCodeAtivo[c.codigo] = c;
+  });
+
+  const [auditoria, salvarAuditoria] = useSharedList("auditoria", []);
+  const registrarAuditoria = useCallback(
+    async (acao, entidade, descricao) => {
+      const entrada = {
+        id: uid("log"),
+        timestamp: Date.now(),
+        usuarioId: perfil?.uid,
+        usuarioNome: perfil?.nome,
+        acao,
+        entidade,
+        descricao,
+      };
+      const novo = [entrada, ...(auditoria || [])].slice(0, 1000);
+      await salvarAuditoria(novo);
+    },
+    [auditoria, perfil, salvarAuditoria]
+  );
+
   // Empresa ativa (Fase 2) — Saldos, Lançamentos e Consulta trabalham sempre
   // com os dados desta empresa. Escolha válida apenas durante a sessão atual.
   const [empresaAtivaId, setEmpresaAtivaId] = useState(null);
@@ -2382,11 +2619,19 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
       {aba === "aprovacoes" && (
         <GestaoAprovacoesView usuarios={usuarios} turmas={turmas} recarregar={recarregarUsuarios} />
       )}
-      {aba === "plano-contas" && <GestaoPlanoContasView />}
+      {aba === "plano-contas" && (
+        <GestaoPlanoContasView
+          perfil={perfil}
+          contas={contasAtivas}
+          salvarPlanoContas={salvarPlanoContas}
+          auditoria={auditoria}
+          registrarAuditoria={registrarAuditoria}
+        />
+      )}
       {aba === "saldos" && (
         <>
           <SeletorEmpresaAtiva empresas={empresas} empresaAtivaId={empresaAtivaId} setEmpresaAtivaId={setEmpresaAtivaId} />
-          <GestaoSaldosView empresa={empresaAtiva} saldos={saldos} salvarSaldos={salvarSaldos} />
+          <GestaoSaldosView empresa={empresaAtiva} saldos={saldos} salvarSaldos={salvarSaldos} leaves={leavesAtivas} />
         </>
       )}
       {aba === "lancamentos" && (
@@ -2397,19 +2642,33 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
             perfil={perfil}
             lancamentos={lancamentos}
             salvarLancamentos={salvarLancamentos}
+            leaves={leavesAtivas}
+            contaByCode={contaByCodeAtivo}
           />
         </>
       )}
       {aba === "razao" && (
         <>
           <SeletorEmpresaAtiva empresas={empresas} empresaAtivaId={empresaAtivaId} setEmpresaAtivaId={setEmpresaAtivaId} />
-          <GestaoConsultaView empresa={empresaAtiva} lancamentos={lancamentos} saldos={saldos} />
+          <GestaoConsultaView
+            empresa={empresaAtiva}
+            lancamentos={lancamentos}
+            saldos={saldos}
+            leaves={leavesAtivas}
+            contaByCode={contaByCodeAtivo}
+          />
         </>
       )}
       {aba === "balancete" && (
         <>
           <SeletorEmpresaAtiva empresas={empresas} empresaAtivaId={empresaAtivaId} setEmpresaAtivaId={setEmpresaAtivaId} />
-          <GestaoBalanceteView empresa={empresaAtiva} lancamentos={lancamentos} saldos={saldos} />
+          <GestaoBalanceteView
+            empresa={empresaAtiva}
+            lancamentos={lancamentos}
+            saldos={saldos}
+            leaves={leavesAtivas}
+            contaByCode={contaByCodeAtivo}
+          />
         </>
       )}
       {aba === "dre" && (
