@@ -1,0 +1,12 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Uma única coleção "kv" (chave-valor) por baixo de toda a camada
+    // window.storage.get/set/delete do sistema. Nenhuma leitura ou escrita
+    // é permitida sem login — nasce assim, sem "modo de teste" e sem
+    // data de expiração (ver Seção 8 do manual de operacionalização).
+    match /kv/{docId} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
