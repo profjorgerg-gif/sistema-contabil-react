@@ -3,7 +3,7 @@ import {
   Menu, X, LogOut, School, Users, Building2, LayoutDashboard, BookOpen,
   ClipboardList, FileBarChart, ScrollText, History, Save, Eye, EyeOff,
   Crown, UserCheck, UserX, Pencil, Trash2, Plus, ShieldCheck, Wallet,
-  Landmark, GraduationCap, Layers,
+  Landmark, GraduationCap, Layers, Package,
 } from "lucide-react";
 import {
   observarSessao, cadastrar, entrar, sair, recuperarSenha, traduzErroAuth, CODIGO_MESTRE,
@@ -66,6 +66,7 @@ const EMPRESA_ITENS = [
   { id: "saldos", label: "Saldos Iniciais", icon: Wallet },
   { id: "lancamentos", label: "Lançamentos", icon: ScrollText },
   { id: "razao", label: "Consulta por Conta", icon: Layers },
+  { id: "estoque", label: "Controle de Estoque", icon: Package },
   { id: "balancete", label: "Balancete de Verificação", icon: ClipboardList },
   { id: "dre", label: "DRE", icon: FileBarChart },
   { id: "encerramento", label: "Encerramento (ARE)", icon: History },
@@ -2586,7 +2587,6 @@ const INTRO_SUBS = [
   { id: "classificacao", label: "Classificação de Contas" },
   { id: "estruturabp", label: "Estrutura do BP" },
   { id: "regimes", label: "Regimes Contábeis" },
-  { id: "estoque", label: "Controle de Estoque" },
 ];
 
 const PRINCIPIOS_CONTABEIS = [
@@ -2902,11 +2902,15 @@ function KardexColuna({ titulo, k }) {
   );
 }
 
-function IntroEstoque({ perfil, estoqueMovs, salvarEstoqueMovs, registrarAuditoria }) {
+function IntroEstoque({ perfil, empresa, estoqueMovs, salvarEstoqueMovs, registrarAuditoria }) {
   const podeExcluir = !!perfil?.permissoes?.excluirLancamentos;
   const movs = estoqueMovs || [];
   const [form, setForm] = useState({ data: new Date().toISOString().slice(0, 10), tipo: "Entrada", quantidade: "", valorUnit: "" });
   const [erro, setErro] = useState("");
+
+  if (!empresa) {
+    return <div className="text-sm text-inkSoft italic">Selecione uma empresa ativa acima para ver o estoque.</div>;
+  }
 
   const peps = computeKardexPEPS(movs);
   const ueps = computeKardexUEPS(movs);
@@ -2930,14 +2934,14 @@ function IntroEstoque({ perfil, estoqueMovs, salvarEstoqueMovs, registrarAuditor
       valorUnit: form.tipo === "Entrada" ? Number(form.valorUnit) : undefined,
     };
     await salvarEstoqueMovs([...movs, novoMov]);
-    await registrarAuditoria("criar", "estoque", `Registrou movimentação de estoque: ${form.tipo} de ${quantidade} unidade(s)`);
+    await registrarAuditoria("criar", "estoque", `Registrou movimentação de estoque na empresa "${empresa.nome}": ${form.tipo} de ${quantidade} unidade(s)`);
     setForm({ data: new Date().toISOString().slice(0, 10), tipo: form.tipo, quantidade: "", valorUnit: "" });
   };
 
   const carregarExemplo = async () => {
     const novos = seedEstoqueMovs();
     await salvarEstoqueMovs([...movs, ...novos]);
-    await registrarAuditoria("criar", "estoque", `Carregou ${novos.length} movimentações de estoque de exemplo`);
+    await registrarAuditoria("criar", "estoque", `Carregou ${novos.length} movimentações de estoque de exemplo na empresa "${empresa.nome}"`);
   };
 
   const limparTudo = async () => {
@@ -2947,12 +2951,12 @@ function IntroEstoque({ perfil, estoqueMovs, salvarEstoqueMovs, registrarAuditor
     }
     if (!confirm("Excluir todas as movimentações de estoque cadastradas?")) return;
     await salvarEstoqueMovs([]);
-    await registrarAuditoria("excluir", "estoque", `Excluiu TODAS as ${movs.length} movimentações de estoque`);
+    await registrarAuditoria("excluir", "estoque", `Excluiu TODAS as ${movs.length} movimentações de estoque da empresa "${empresa.nome}"`);
   };
 
   return (
     <div>
-      <h3 className="font-serif font-semibold text-ink text-lg mb-1">Controle de Estoque — PEPS, UEPS e Média Ponderada</h3>
+      <h3 className="font-serif font-semibold text-ink text-lg mb-1">Controle de Estoque — {empresa.nome}</h3>
       <p className="text-sm text-inkSoft mb-4">
         Compare, com os mesmos dados de movimentação, como cada critério de avaliação de estoque
         afeta o Custo da Mercadoria Vendida (CMV) e o valor do estoque final.
@@ -3034,7 +3038,7 @@ function IntroEstoque({ perfil, estoqueMovs, salvarEstoqueMovs, registrarAuditor
   );
 }
 
-function GestaoIntroducaoView({ perfil, contas, estoqueMovs, salvarEstoqueMovs, registrarAuditoria }) {
+function GestaoIntroducaoView({ contas }) {
   const [sub, setSub] = useState("principios");
   return (
     <div>
@@ -3043,9 +3047,6 @@ function GestaoIntroducaoView({ perfil, contas, estoqueMovs, salvarEstoqueMovs, 
       {sub === "classificacao" && <IntroClassificacao contas={contas} />}
       {sub === "estruturabp" && <IntroEstruturaBP />}
       {sub === "regimes" && <IntroRegimes />}
-      {sub === "estoque" && (
-        <IntroEstoque perfil={perfil} estoqueMovs={estoqueMovs} salvarEstoqueMovs={salvarEstoqueMovs} registrarAuditoria={registrarAuditoria} />
-      )}
     </div>
   );
 }
@@ -3416,7 +3417,7 @@ const RELAT_SUBS = [
 // montar o Comparativo e o Backup, que precisam de todas as empresas de uma
 // vez — não só da empresa ativa selecionada no momento).
 async function buscarDadosEmpresa(empresaId) {
-  let lancamentos = [], saldos = {};
+  let lancamentos = [], saldos = {}, estoqueMovs = [];
   try {
     const r = await window.storage.get(`lancamentos_${empresaId}`, true);
     lancamentos = r ? JSON.parse(r.value) : [];
@@ -3425,7 +3426,11 @@ async function buscarDadosEmpresa(empresaId) {
     const r = await window.storage.get(`saldos_${empresaId}`, true);
     saldos = r ? JSON.parse(r.value) : {};
   } catch {}
-  return { lancamentos, saldos };
+  try {
+    const r = await window.storage.get(`estoque_${empresaId}`, true);
+    estoqueMovs = r ? JSON.parse(r.value) : [];
+  } catch {}
+  return { lancamentos, saldos, estoqueMovs };
 }
 
 function RelatorioResumo({ empresa, lancamentos, saldos, leaves, contaByCode }) {
@@ -3620,7 +3625,7 @@ function GestaoRelatoriosView({ perfil, empresa, empresaAtivaId, lancamentos, sa
 // guardar antes de uma mudança grande) e, se necessário, restaurar esse
 // retrato — o que SUBSTITUI os dados de TODOS os usuários, não só os seus.
 
-function GestaoBackupView({ perfil, turmas, empresas, usuarios, estoqueMovs, auditoria, registrarAuditoria }) {
+function GestaoBackupView({ perfil, turmas, empresas, usuarios, auditoria, registrarAuditoria }) {
   const podeExportar = perfil?.tipo === "Mestre" || perfil?.tipo === "Professor";
   const podeRestaurar = !!perfil?.permissoes?.restaurarBackup;
   const [gerando, setGerando] = useState(false);
@@ -3645,9 +3650,11 @@ function GestaoBackupView({ perfil, turmas, empresas, usuarios, estoqueMovs, aud
       );
       const lancamentosPorEmpresa = {};
       const saldosPorEmpresa = {};
+      const estoquePorEmpresa = {};
       porEmpresa.forEach((e) => {
         lancamentosPorEmpresa[e.id] = e.lancamentos;
         saldosPorEmpresa[e.id] = e.saldos;
+        estoquePorEmpresa[e.id] = e.estoqueMovs;
       });
       const backup = {
         tipo: "backup-sistema-contabil-react",
@@ -3658,7 +3665,7 @@ function GestaoBackupView({ perfil, turmas, empresas, usuarios, estoqueMovs, aud
         usuarios: usuarios || [],
         lancamentosPorEmpresa,
         saldosPorEmpresa,
-        estoqueMovs: estoqueMovs || [],
+        estoquePorEmpresa,
         auditoria: auditoria || [],
       };
       const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json;charset=utf-8;" });
@@ -3723,7 +3730,9 @@ function GestaoBackupView({ perfil, turmas, empresas, usuarios, estoqueMovs, aud
         for (const empId of Object.keys(data.saldosPorEmpresa || {})) {
           await window.storage.set(`saldos_${empId}`, JSON.stringify(data.saldosPorEmpresa[empId] || {}), true);
         }
-        await window.storage.set("estoque_movs", JSON.stringify(data.estoqueMovs || []), true);
+        for (const empId of Object.keys(data.estoquePorEmpresa || {})) {
+          await window.storage.set(`estoque_${empId}`, JSON.stringify(data.estoquePorEmpresa[empId] || []), true);
+        }
         await registrarAuditoria("editar", "sistema", `Restaurou um backup (${resumo})`);
         alert("Backup restaurado com sucesso. A página vai recarregar para atualizar todos os dados.");
         window.location.reload();
@@ -4064,9 +4073,9 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
     []
   );
 
-  // Movimentações de estoque (Fase 4 — Introdução à Contabilidade). Globais ao
-  // sistema, não por empresa: é um exercício comparativo de método de custeio.
-  const [estoqueMovs, salvarEstoqueMovs] = useSharedList("estoque_movs", []);
+  // Movimentações de estoque (Controle de Estoque, dentro do Ciclo Contábil) —
+  // por empresa ativa, igual Saldos e Lançamentos.
+  const [estoqueMovs, salvarEstoqueMovs] = useSharedList(empresaAtivaId ? `estoque_${empresaAtivaId}` : null, []);
 
   const moduloFuturo = MODULOS_FUTUROS.find((m) => m.id === aba);
 
@@ -4209,15 +4218,19 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
           />
         </>
       )}
-      {aba === "introducao" && (
-        <GestaoIntroducaoView
-          perfil={perfil}
-          contas={contasAtivas}
-          estoqueMovs={estoqueMovs}
-          salvarEstoqueMovs={salvarEstoqueMovs}
-          registrarAuditoria={registrarAuditoria}
-        />
+      {aba === "estoque" && (
+        <>
+          <SeletorEmpresaAtiva empresas={empresasVisiveis} empresaAtivaId={empresaAtivaId} setEmpresaAtivaId={setEmpresaAtivaId} />
+          <IntroEstoque
+            perfil={perfil}
+            empresa={empresaAtiva}
+            estoqueMovs={estoqueMovs}
+            salvarEstoqueMovs={salvarEstoqueMovs}
+            registrarAuditoria={registrarAuditoria}
+          />
+        </>
       )}
+      {aba === "introducao" && <GestaoIntroducaoView contas={contasAtivas} />}
       {aba === "manual" && <GestaoManualView />}
       {aba === "auditoria" && <GestaoAuditoriaView perfil={perfil} auditoria={auditoria} />}
       {aba === "backup" && (
@@ -4226,7 +4239,6 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
           turmas={turmas}
           empresas={empresas}
           usuarios={usuarios}
-          estoqueMovs={estoqueMovs}
           auditoria={auditoria}
           registrarAuditoria={registrarAuditoria}
         />
