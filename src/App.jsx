@@ -717,7 +717,7 @@ function Layout({ perfil, aba, setAba, children }) {
           </button>
 
           <div className="px-5 pt-4 pb-1 text-[11px] uppercase tracking-wide text-white/40">Gestão</div>
-          {GESTAO_ITENS.map((item) => (
+          {GESTAO_ITENS.filter((item) => !(item.id === "usuarios" && perfil?.tipo === "Aluno")).map((item) => (
             <button
               key={item.id}
               onClick={() => irPara(item.id)}
@@ -837,7 +837,7 @@ function Capa({ perfil, setAba, contagens }) {
       <Card>
         <h3 className="font-serif font-semibold text-ink mb-3">Módulos disponíveis nesta fase</h3>
         <div className="grid sm:grid-cols-3 gap-3">
-          {GESTAO_ITENS.map((item) => (
+          {GESTAO_ITENS.filter((item) => !(item.id === "usuarios" && perfil?.tipo === "Aluno")).map((item) => (
             <button
               key={item.id}
               onClick={() => setAba(item.id)}
@@ -879,6 +879,8 @@ function GestaoTurmasView({ perfil, turmas, salvarTurmas, recarregarTurmas, usua
   const [editandoId, setEditandoId] = useState(null);
   const [nomeEdicao, setNomeEdicao] = useState("");
   const podeGerenciar = !!perfil?.permissoes?.gerenciarTurmas;
+  const souAluno = perfil?.tipo === "Aluno";
+  const turmasVisiveis = souAluno ? (turmas || []).filter((t) => t.id === perfil?.turmaId) : turmas || [];
 
   const criar = async () => {
     if (!novoNome.trim()) return;
@@ -930,13 +932,15 @@ function GestaoTurmasView({ perfil, turmas, salvarTurmas, recarregarTurmas, usua
 
       {!podeGerenciar && (
         <div className="text-sm text-inkSoft mb-4">
-          Você não tem permissão para cadastrar, editar ou excluir turmas. Peça a um usuário <b>Mestre</b> ou{" "}
-          <b>Professor</b>.
+          {souAluno
+            ? "Você está vendo apenas a sua turma. Só um usuário Mestre ou Professor pode cadastrar, editar ou excluir turmas."
+            : <>Você não tem permissão para cadastrar, editar ou excluir turmas. Peça a um usuário <b>Mestre</b> ou{" "}
+          <b>Professor</b>.</>}
         </div>
       )}
 
       <div className="space-y-2">
-        {(turmas || []).map((t) => (
+        {turmasVisiveis.map((t) => (
           <Card key={t.id} className="flex items-center justify-between gap-3">
             {editandoId === t.id ? (
               <div className="flex-1 flex gap-2">
@@ -975,7 +979,7 @@ function GestaoTurmasView({ perfil, turmas, salvarTurmas, recarregarTurmas, usua
             )}
           </Card>
         ))}
-        {turmas && turmas.length === 0 && (
+        {turmas && turmasVisiveis.length === 0 && (
           <div className="text-sm text-inkSoft italic">Nenhuma turma cadastrada ainda.</div>
         )}
       </div>
@@ -987,26 +991,44 @@ function GestaoTurmasView({ perfil, turmas, salvarTurmas, recarregarTurmas, usua
 // GESTÃO — EMPRESAS
 // ============================================================================
 
-function GestaoEmpresasView({ perfil, empresas, salvarEmpresas }) {
+function GestaoEmpresasView({ perfil, empresas, salvarEmpresas, usuarios }) {
   const podeExcluir = !!perfil?.permissoes?.excluirEmpresas;
-  const [form, setForm] = useState({ nome: "", cnpj: "", atividade: "", responsavel: "" });
+  const podeGerenciar = !!perfil?.permissoes?.gerenciarTurmas; // mesma permissão usada em Turmas
+  const souAluno = perfil?.tipo === "Aluno";
+
+  const formVazio = () => ({ nome: "", cnpj: "", atividade: "", responsavel: "", alunoId: "" });
+  const [form, setForm] = useState(formVazio());
   const [editandoId, setEditandoId] = useState(null);
+
+  const alunosAprovados = (usuarios || [])
+    .filter((u) => u.tipo === "Aluno" && u.aprovado)
+    .sort((a, b) => a.nome.localeCompare(b.nome));
+  const alunoNome = (id) => (usuarios || []).find((u) => u.uid === id)?.nome || null;
+
+  const empresasVisiveis = souAluno ? (empresas || []).filter((em) => em.alunoId === perfil?.uid) : empresas || [];
 
   const salvar = async (e) => {
     e.preventDefault();
     if (!form.nome.trim()) return;
+    const dados = { ...form, alunoId: form.alunoId || null };
     if (editandoId) {
-      await salvarEmpresas((empresas || []).map((em) => (em.id === editandoId ? { ...em, ...form } : em)));
+      await salvarEmpresas((empresas || []).map((em) => (em.id === editandoId ? { ...em, ...dados } : em)));
     } else {
-      await salvarEmpresas([...(empresas || []), { id: uid("e"), ...form }]);
+      await salvarEmpresas([...(empresas || []), { id: uid("e"), ...dados }]);
     }
-    setForm({ nome: "", cnpj: "", atividade: "", responsavel: "" });
+    setForm(formVazio());
     setEditandoId(null);
   };
 
   const editar = (em) => {
     setEditandoId(em.id);
-    setForm({ nome: em.nome, cnpj: em.cnpj || "", atividade: em.atividade || "", responsavel: em.responsavel || "" });
+    setForm({
+      nome: em.nome,
+      cnpj: em.cnpj || "",
+      atividade: em.atividade || "",
+      responsavel: em.responsavel || "",
+      alunoId: em.alunoId || "",
+    });
   };
 
   const excluir = async (em) => {
@@ -1022,53 +1044,76 @@ function GestaoEmpresasView({ perfil, empresas, salvarEmpresas }) {
     <div>
       <h2 className="text-lg font-serif font-semibold text-ink mb-1">Empresas</h2>
       <p className="text-sm text-inkSoft mb-4">
-        Empresas fictícias usadas nos lançamentos e demonstrativos — cadastradas pelo professor(a) para as
-        equipes praticarem.
+        {souAluno
+          ? "A empresa fictícia usada nos seus lançamentos e demonstrativos."
+          : "Empresas fictícias usadas nos lançamentos e demonstrativos — cadastradas pelo professor(a), uma para cada aluno."}
       </p>
 
-      <Card className="mb-4">
-        <form onSubmit={salvar} className="grid sm:grid-cols-2 gap-3">
-          <Field label="Nome da empresa">
-            <TxtInput required value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
-          </Field>
-          <Field label="CNPJ (fictício)">
-            <div className="flex gap-2">
-              <TxtInput
-                placeholder="00.000.000/0001-00"
-                value={form.cnpj}
-                onChange={(e) => setForm({ ...form, cnpj: e.target.value })}
-              />
-              <Botao type="button" variant="ghost" onClick={() => setForm({ ...form, cnpj: gerarCNPJFicticio() })}>
-                Gerar
-              </Botao>
+      {podeGerenciar && (
+        <Card className="mb-4">
+          <form onSubmit={salvar} className="grid sm:grid-cols-2 gap-3">
+            <Field label="Nome da empresa">
+              <TxtInput required value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
+            </Field>
+            <Field label="CNPJ (fictício)">
+              <div className="flex gap-2">
+                <TxtInput
+                  placeholder="00.000.000/0001-00"
+                  value={form.cnpj}
+                  onChange={(e) => setForm({ ...form, cnpj: e.target.value })}
+                />
+                <Botao type="button" variant="ghost" onClick={() => setForm({ ...form, cnpj: gerarCNPJFicticio() })}>
+                  Gerar
+                </Botao>
+              </div>
+            </Field>
+            <Field label="Atividade">
+              <TxtInput value={form.atividade} onChange={(e) => setForm({ ...form, atividade: e.target.value })} />
+            </Field>
+            <Field label="Responsável (texto livre, opcional)">
+              <TxtInput value={form.responsavel} onChange={(e) => setForm({ ...form, responsavel: e.target.value })} />
+            </Field>
+            <Field
+              label="Aluno responsável"
+              hint="Só o aluno vinculado aqui (e os usuários Mestre/Professor) vê esta empresa."
+            >
+              <SelectInput value={form.alunoId} onChange={(e) => setForm({ ...form, alunoId: e.target.value })}>
+                <option value="">— Nenhum (ainda) —</option>
+                {alunosAprovados.map((a) => (
+                  <option key={a.uid} value={a.uid}>
+                    {a.nome}
+                  </option>
+                ))}
+              </SelectInput>
+            </Field>
+            <div className="sm:col-span-2 flex gap-2">
+              <Botao type="submit">{editandoId ? "Salvar alterações" : "Adicionar empresa"}</Botao>
+              {editandoId && (
+                <Botao
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    setEditandoId(null);
+                    setForm(formVazio());
+                  }}
+                >
+                  Cancelar
+                </Botao>
+              )}
             </div>
-          </Field>
-          <Field label="Atividade">
-            <TxtInput value={form.atividade} onChange={(e) => setForm({ ...form, atividade: e.target.value })} />
-          </Field>
-          <Field label="Responsável">
-            <TxtInput value={form.responsavel} onChange={(e) => setForm({ ...form, responsavel: e.target.value })} />
-          </Field>
-          <div className="sm:col-span-2 flex gap-2">
-            <Botao type="submit">{editandoId ? "Salvar alterações" : "Adicionar empresa"}</Botao>
-            {editandoId && (
-              <Botao
-                type="button"
-                variant="ghost"
-                onClick={() => {
-                  setEditandoId(null);
-                  setForm({ nome: "", cnpj: "", atividade: "", responsavel: "" });
-                }}
-              >
-                Cancelar
-              </Botao>
-            )}
-          </div>
-        </form>
-      </Card>
+          </form>
+        </Card>
+      )}
+
+      {!podeGerenciar && !souAluno && (
+        <div className="text-sm text-inkSoft mb-4">
+          Você não tem permissão para cadastrar, editar ou excluir empresas. Peça a um usuário <b>Mestre</b> ou{" "}
+          <b>Professor</b>.
+        </div>
+      )}
 
       <div className="space-y-2">
-        {(empresas || []).map((em) => (
+        {empresasVisiveis.map((em) => (
           <Card key={em.id} className="flex items-center justify-between gap-3">
             <div>
               <div className="font-semibold text-ink text-sm">{em.nome}</div>
@@ -1076,19 +1121,30 @@ function GestaoEmpresasView({ perfil, empresas, salvarEmpresas }) {
                 {em.cnpj || "CNPJ não informado"} · {em.atividade || "—"}
               </div>
               {em.responsavel && <div className="text-xs text-inkSoft">Responsável: {em.responsavel}</div>}
+              {!souAluno && (
+                <div className="text-xs text-inkSoft">
+                  Aluno: {alunoNome(em.alunoId) || <span className="italic">— ainda não vinculado —</span>}
+                </div>
+              )}
             </div>
-            <div className="flex gap-2 shrink-0">
-              <button onClick={() => editar(em)} className="text-inkSoft hover:text-ink" title="Editar">
-                <Pencil size={16} />
-              </button>
-              <button onClick={() => excluir(em)} className="text-red hover:opacity-70" title="Excluir">
-                <Trash2 size={16} />
-              </button>
-            </div>
+            {podeGerenciar && (
+              <div className="flex gap-2 shrink-0">
+                <button onClick={() => editar(em)} className="text-inkSoft hover:text-ink" title="Editar">
+                  <Pencil size={16} />
+                </button>
+                {podeExcluir && (
+                  <button onClick={() => excluir(em)} className="text-red hover:opacity-70" title="Excluir">
+                    <Trash2 size={16} />
+                  </button>
+                )}
+              </div>
+            )}
           </Card>
         ))}
-        {empresas && empresas.length === 0 && (
-          <div className="text-sm text-inkSoft italic">Nenhuma empresa cadastrada ainda.</div>
+        {empresas && empresasVisiveis.length === 0 && (
+          <div className="text-sm text-inkSoft italic">
+            {souAluno ? "Nenhuma empresa vinculada a você ainda — peça ao professor(a)." : "Nenhuma empresa cadastrada ainda."}
+          </div>
         )}
       </div>
     </div>
@@ -3376,8 +3432,11 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
 
   // Empresa ativa (Fase 2) — Saldos, Lançamentos e Consulta trabalham sempre
   // com os dados desta empresa. Escolha válida apenas durante a sessão atual.
+  // Aluno só pode escolher/ver a empresa vinculada a ele (Fase 2.1 — visibilidade).
+  const empresasVisiveis =
+    perfil?.tipo === "Aluno" ? (empresas || []).filter((e) => e.alunoId === perfil.uid) : empresas || [];
   const [empresaAtivaId, setEmpresaAtivaId] = useState(null);
-  const empresaAtiva = (empresas || []).find((e) => e.id === empresaAtivaId) || null;
+  const empresaAtiva = empresasVisiveis.find((e) => e.id === empresaAtivaId) || null;
   const [saldos, salvarSaldos] = useSharedList(empresaAtivaId ? `saldos_${empresaAtivaId}` : null, {});
   const [lancamentos, salvarLancamentos] = useSharedList(
     empresaAtivaId ? `lancamentos_${empresaAtivaId}` : null,
@@ -3410,9 +3469,9 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
         />
       )}
       {aba === "empresas" && (
-        <GestaoEmpresasView perfil={perfil} empresas={empresas} salvarEmpresas={salvarEmpresas} />
+        <GestaoEmpresasView perfil={perfil} empresas={empresas} salvarEmpresas={salvarEmpresas} usuarios={usuarios} />
       )}
-      {aba === "usuarios" && (
+      {aba === "usuarios" && perfil?.tipo !== "Aluno" && (
         <GestaoUsuariosView perfil={perfil} usuarios={usuarios} turmas={turmas} recarregar={recarregarUsuarios} />
       )}
       {aba === "aprovacoes" && (
@@ -3429,13 +3488,13 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
       )}
       {aba === "saldos" && (
         <>
-          <SeletorEmpresaAtiva empresas={empresas} empresaAtivaId={empresaAtivaId} setEmpresaAtivaId={setEmpresaAtivaId} />
+          <SeletorEmpresaAtiva empresas={empresasVisiveis} empresaAtivaId={empresaAtivaId} setEmpresaAtivaId={setEmpresaAtivaId} />
           <GestaoSaldosView empresa={empresaAtiva} saldos={saldos} salvarSaldos={salvarSaldos} leaves={leavesAtivas} />
         </>
       )}
       {aba === "lancamentos" && (
         <>
-          <SeletorEmpresaAtiva empresas={empresas} empresaAtivaId={empresaAtivaId} setEmpresaAtivaId={setEmpresaAtivaId} />
+          <SeletorEmpresaAtiva empresas={empresasVisiveis} empresaAtivaId={empresaAtivaId} setEmpresaAtivaId={setEmpresaAtivaId} />
           <GestaoLancamentosView
             empresa={empresaAtiva}
             perfil={perfil}
@@ -3448,7 +3507,7 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
       )}
       {aba === "razao" && (
         <>
-          <SeletorEmpresaAtiva empresas={empresas} empresaAtivaId={empresaAtivaId} setEmpresaAtivaId={setEmpresaAtivaId} />
+          <SeletorEmpresaAtiva empresas={empresasVisiveis} empresaAtivaId={empresaAtivaId} setEmpresaAtivaId={setEmpresaAtivaId} />
           <GestaoConsultaView
             empresa={empresaAtiva}
             lancamentos={lancamentos}
@@ -3460,7 +3519,7 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
       )}
       {aba === "balancete" && (
         <>
-          <SeletorEmpresaAtiva empresas={empresas} empresaAtivaId={empresaAtivaId} setEmpresaAtivaId={setEmpresaAtivaId} />
+          <SeletorEmpresaAtiva empresas={empresasVisiveis} empresaAtivaId={empresaAtivaId} setEmpresaAtivaId={setEmpresaAtivaId} />
           <GestaoBalanceteView
             empresa={empresaAtiva}
             lancamentos={lancamentos}
@@ -3472,19 +3531,19 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
       )}
       {aba === "dre" && (
         <>
-          <SeletorEmpresaAtiva empresas={empresas} empresaAtivaId={empresaAtivaId} setEmpresaAtivaId={setEmpresaAtivaId} />
+          <SeletorEmpresaAtiva empresas={empresasVisiveis} empresaAtivaId={empresaAtivaId} setEmpresaAtivaId={setEmpresaAtivaId} />
           <GestaoDREView empresa={empresaAtiva} lancamentos={lancamentos} saldos={saldos} />
         </>
       )}
       {aba === "encerramento" && (
         <>
-          <SeletorEmpresaAtiva empresas={empresas} empresaAtivaId={empresaAtivaId} setEmpresaAtivaId={setEmpresaAtivaId} />
+          <SeletorEmpresaAtiva empresas={empresasVisiveis} empresaAtivaId={empresaAtivaId} setEmpresaAtivaId={setEmpresaAtivaId} />
           <GestaoEncerramentoView empresa={empresaAtiva} lancamentos={lancamentos} saldos={saldos} />
         </>
       )}
       {aba === "balanco" && (
         <>
-          <SeletorEmpresaAtiva empresas={empresas} empresaAtivaId={empresaAtivaId} setEmpresaAtivaId={setEmpresaAtivaId} />
+          <SeletorEmpresaAtiva empresas={empresasVisiveis} empresaAtivaId={empresaAtivaId} setEmpresaAtivaId={setEmpresaAtivaId} />
           <GestaoBalancoView empresa={empresaAtiva} lancamentos={lancamentos} saldos={saldos} />
         </>
       )}
