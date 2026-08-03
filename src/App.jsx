@@ -3,7 +3,7 @@ import {
   Menu, X, LogOut, School, Users, Building2, LayoutDashboard, BookOpen,
   ClipboardList, FileBarChart, ScrollText, History, Save, Eye, EyeOff,
   Crown, UserCheck, UserX, Pencil, Trash2, Plus, ShieldCheck, Wallet,
-  Landmark, GraduationCap, Layers, Package,
+  Landmark, GraduationCap, Layers, Package, ChevronLeft,
 } from "lucide-react";
 import {
   observarSessao, cadastrar, entrar, sair, recuperarSenha, traduzErroAuth, CODIGO_MESTRE,
@@ -687,7 +687,7 @@ function TelaAguardandoAprovacao({ perfil }) {
 // LAYOUT PRINCIPAL (menu responsivo em gaveta no celular)
 // ============================================================================
 
-function Layout({ perfil, aba, setAba, children }) {
+function Layout({ perfil, aba, setAba, podeVoltar, aoVoltar, children }) {
   const [menuAberto, setMenuAberto] = useState(false);
   const irPara = (id) => {
     setAba(id);
@@ -845,7 +845,17 @@ function Layout({ perfil, aba, setAba, children }) {
       </aside>
 
       <main className="flex-1 p-4 pt-20 md:p-8 md:pt-8 min-w-0">
-        <div className="max-w-5xl mx-auto">{children}</div>
+        <div className="max-w-5xl mx-auto">
+          {podeVoltar && (
+            <button
+              onClick={aoVoltar}
+              className="flex items-center gap-1.5 text-sm text-inkSoft hover:text-green mb-4 -ml-1"
+            >
+              <ChevronLeft size={18} /> Voltar
+            </button>
+          )}
+          {children}
+        </div>
       </main>
     </div>
   );
@@ -4035,7 +4045,27 @@ function GestaoAprovacoesView({ usuarios, turmas, recarregar, registrarAuditoria
 // ============================================================================
 
 function Dashboard({ user, perfil, recarregarPerfil }) {
-  const [aba, setAba] = useState("capa");
+  const [aba, setAbaBase] = useState("capa");
+  const [historicoAbas, setHistoricoAbas] = useState([]);
+
+  // Navegação com histórico: cada troca de tela empilha a tela anterior, para
+  // o botão "Voltar" (visível em todas as telas, exceto no Início) funcionar
+  // em qualquer sequência de cliques no menu.
+  const setAba = useCallback((novaAba) => {
+    setAbaBase((abaAtual) => {
+      if (novaAba !== abaAtual) setHistoricoAbas((h) => [...h, abaAtual]);
+      return novaAba;
+    });
+  }, []);
+  const voltar = useCallback(() => {
+    setHistoricoAbas((h) => {
+      if (h.length === 0) return h;
+      const anterior = h[h.length - 1];
+      setAbaBase(anterior);
+      return h.slice(0, -1);
+    });
+  }, []);
+
   const [turmas, salvarTurmas, recarregarTurmas] = useSharedList("turmas");
   const [empresas, salvarEmpresas, recarregarEmpresas] = useSharedList("empresas");
   const [refreshUsuarios, setRefreshUsuarios] = useState(0);
@@ -4098,7 +4128,7 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
   };
 
   return (
-    <Layout perfil={perfil} aba={aba} setAba={setAba}>
+    <Layout perfil={perfil} aba={aba} setAba={setAba} podeVoltar={historicoAbas.length > 0} aoVoltar={voltar}>
       {aba === "capa" && <Capa perfil={perfil} setAba={setAba} contagens={contagens} />}
       {aba === "turmas" && (
         <GestaoTurmasView
