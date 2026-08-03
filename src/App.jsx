@@ -3082,6 +3082,111 @@ const MANUAL_SUBS = [
   { id: "glossario", label: "Glossário" },
 ];
 
+// ---- Ilustrações (mockups numerados das telas reais) para o Manual do Aluno ----
+
+function NumBadge({ n }) {
+  return (
+    <span className="absolute -top-2 -left-2 w-5 h-5 rounded-full bg-green text-white text-[11px] font-bold flex items-center justify-center shadow-soft z-10">
+      {n}
+    </span>
+  );
+}
+
+function CampoIlustrado({ n, label, valor, className = "" }) {
+  return (
+    <div className={"relative border border-line rounded-lg px-3 py-2 bg-paper " + className}>
+      <NumBadge n={n} />
+      <div className="text-[10px] text-inkSoft">{label}</div>
+      <div className="text-sm text-ink truncate">{valor}</div>
+    </div>
+  );
+}
+
+// Mockup do formulário de Lançamentos — a numeração bate exatamente com os
+// passos 1 a 7 explicados abaixo, no texto do Manual.
+function IlustracaoLancamento() {
+  return (
+    <div className="border-2 border-dashed border-line rounded-xl p-4 bg-white mb-4">
+      <div className="text-[10px] uppercase tracking-wide text-inkSoft mb-2">
+        Como é a tela real de Lançamentos — os números batem com os passos abaixo
+      </div>
+      <div className="grid sm:grid-cols-2 gap-3 mb-3">
+        <CampoIlustrado n={1} label="Data" valor="03/08/2026" />
+        <CampoIlustrado n={2} label="Tipo de operação (opcional)" valor="Venda" />
+      </div>
+      <CampoIlustrado n={3} label="Histórico do fato contábil" valor="Venda de mercadorias à vista" className="mb-3" />
+      <div className="grid sm:grid-cols-2 gap-3 mb-3">
+        <CampoIlustrado n={4} label="Conta débito" valor="1.1.1.01 — Caixa Geral" />
+        <CampoIlustrado n={4} label="Conta crédito" valor="4.1.1.01 — Vendas de Mercadorias" />
+      </div>
+      <div className="grid sm:grid-cols-2 gap-3 mb-3">
+        <CampoIlustrado n={5} label="Valor (R$)" valor="500,00" />
+        <div className="grid grid-cols-2 gap-2">
+          <CampoIlustrado n={6} label="Documento" valor="NF 1234" />
+          <CampoIlustrado n={6} label="Observações" valor="" />
+        </div>
+      </div>
+      <div className="relative inline-block">
+        <NumBadge n={7} />
+        <div className="bg-green text-white text-sm font-semibold px-4 py-2 rounded-lg">Adicionar lançamento</div>
+      </div>
+    </div>
+  );
+}
+
+// Mockup do seletor de Empresa ativa — acompanha o passo 3 dos Primeiros Passos.
+// Mockup da tela de Login — E-mail, Senha e botão Entrar.
+function IlustracaoLogin() {
+  return (
+    <div className="border-2 border-dashed border-line rounded-xl p-4 bg-white mb-4 max-w-xs">
+      <div className="space-y-3">
+        <CampoIlustrado n={1} label="E-mail" valor="voce@exemplo.com" />
+        <CampoIlustrado n={2} label="Senha" valor="•••••••••" />
+        <div className="relative">
+          <NumBadge n={3} />
+          <div className="bg-green text-white text-sm font-semibold px-4 py-2 rounded-lg text-center">Entrar</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Mockup da tela de Cadastro (Criar conta) — mesmos campos e ordem da tela real.
+function IlustracaoCadastro() {
+  return (
+    <div className="border-2 border-dashed border-line rounded-xl p-4 bg-white mb-4">
+      <div className="space-y-3">
+        <CampoIlustrado n={1} label="Nome completo" valor="Maria Oliveira" />
+        <div className="grid sm:grid-cols-2 gap-3">
+          <CampoIlustrado n={2} label="E-mail" valor="maria@exemplo.com" />
+          <CampoIlustrado n={3} label="Senha / Confirmar senha" valor="•••••••••" />
+        </div>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <CampoIlustrado n={4} label="Você é" valor="Aluno" />
+          <CampoIlustrado n={5} label="Turma" valor="— Selecione —" />
+        </div>
+        <CampoIlustrado n={6} label="Código de Mestre (opcional)" valor="" />
+        <div className="relative inline-block">
+          <NumBadge n={7} />
+          <div className="bg-green text-white text-sm font-semibold px-4 py-2 rounded-lg">Criar conta</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function IlustracaoEmpresaAtiva() {
+  return (
+    <div className="border-2 border-dashed border-line rounded-xl p-4 bg-white mb-4 max-w-md">
+      <div className="text-[10px] uppercase tracking-wide text-inkSoft mb-2">
+        Este seletor aparece no topo de Saldos, Lançamentos, Consulta, Balancete, DRE, Encerramento,
+        Balanço e Relatórios
+      </div>
+      <CampoIlustrado n={3} label="Empresa ativa" valor="— Selecione uma empresa —" />
+    </div>
+  );
+}
+
 function PassoManual({ n, titulo, children }) {
   return (
     <div className="flex gap-3 mb-3">
@@ -3101,6 +3206,25 @@ function ManualInicio() {
     <div>
       <h3 className="font-serif font-semibold text-ink text-lg mb-1">Primeiros passos no sistema</h3>
       <p className="text-sm text-inkSoft mb-4">Siga esta ordem na primeira vez que você usar o sistema.</p>
+
+      <h4 className="font-semibold text-ink text-sm mb-1">Tela de entrada (Login)</h4>
+      <p className="text-sm text-inkSoft mb-3">
+        Se você já tem conta aprovada, entre com seu e-mail e senha cadastrados. Esqueceu a senha?
+        Use o link "Esqueci minha senha" logo abaixo do botão Entrar.
+      </p>
+      <IlustracaoLogin />
+
+      <h4 className="font-semibold text-ink text-sm mb-1">Tela de cadastro (Criar conta)</h4>
+      <p className="text-sm text-inkSoft mb-3">
+        Ainda não tem conta? Clique em "Ainda não tenho conta — cadastrar", na tela de login, e
+        preencha os campos abaixo. Como Aluno, a Turma é obrigatória — se ela ainda não aparecer na
+        lista, peça ao professor(a) para cadastrá-la antes. Depois de se cadastrar, um usuário{" "}
+        <b>Mestre</b> ou <b>Professor</b> precisa <b>aprovar</b> sua conta antes de você conseguir
+        entrar.
+      </p>
+      <IlustracaoCadastro />
+
+      <IlustracaoEmpresaAtiva />
       <Card>
         <PassoManual n={1} titulo="Confira se sua turma já está cadastrada">
           No módulo <b>Turmas</b>, veja se a sua já aparece na lista. Se não, peça ao professor
@@ -3152,6 +3276,7 @@ function ManualLancar() {
         Todo lançamento representa um fato contábil e sempre usa duas contas: uma a débito e uma a
         crédito, no mesmo valor.
       </p>
+      <IlustracaoLancamento />
       <Card>
         <PassoManual n={1} titulo="Data">Informe a data em que o fato ocorreu (não precisa ser a data de hoje).</PassoManual>
         <PassoManual n={2} titulo="Tipo de operação">
