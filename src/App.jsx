@@ -1110,24 +1110,83 @@ function SeletorEmpresaAtiva({ empresas, empresaAtivaId, setEmpresaAtivaId }) {
   );
 }
 
-function ContaSelect({ value, onChange, required }) {
+// Campo de conta com busca por código ou nome (em vez de rolar uma lista com
+// 292 itens). Mantém a mesma "forma" de evento (onChange recebe {target:{value}})
+// para funcionar como substituto direto de um <select> nos formulários.
+function ContaSelect({ value, onChange }) {
+  const [aberto, setAberto] = useState(false);
+  const [busca, setBusca] = useState("");
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    function aoClicarFora(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+        setAberto(false);
+        setBusca("");
+      }
+    }
+    document.addEventListener("mousedown", aoClicarFora);
+    return () => document.removeEventListener("mousedown", aoClicarFora);
+  }, []);
+
+  const contaSelecionada = CONTA_BY_CODE[value];
+  const rotuloSelecionado = contaSelecionada ? `${contaSelecionada.codigo} — ${contaSelecionada.nome}` : "";
+
+  const termo = busca.trim().toLowerCase();
   const byGrupo = {};
   LEAVES.forEach((c) => {
+    if (termo && !c.codigo.toLowerCase().includes(termo) && !c.nome.toLowerCase().includes(termo)) return;
     (byGrupo[c.grupo] = byGrupo[c.grupo] || []).push(c);
   });
+  const gruposComResultado = GRUPOS.filter((g) => byGrupo[g]);
+
+  const escolher = (codigo) => {
+    onChange({ target: { value: codigo } });
+    setAberto(false);
+    setBusca("");
+  };
+
   return (
-    <SelectInput value={value} onChange={onChange} required={required}>
-      <option value="">Selecione...</option>
-      {GRUPOS.filter((g) => byGrupo[g]).map((g) => (
-        <optgroup key={g} label={g}>
-          {byGrupo[g].map((c) => (
-            <option key={c.codigo} value={c.codigo}>
-              {c.codigo} — {c.nome}
-            </option>
+    <div className="relative" ref={wrapRef}>
+      <TxtInput
+        placeholder="Buscar por código ou nome..."
+        value={aberto ? busca : rotuloSelecionado}
+        onChange={(e) => setBusca(e.target.value)}
+        onFocus={() => {
+          setAberto(true);
+          setBusca("");
+        }}
+        autoComplete="off"
+      />
+      {aberto && (
+        <div className="absolute z-20 mt-1 w-full max-h-64 overflow-y-auto bg-paperRaised border border-line rounded-lg shadow-soft">
+          {gruposComResultado.length === 0 && (
+            <div className="px-3 py-2 text-sm text-inkSoft italic">Nenhuma conta encontrada.</div>
+          )}
+          {gruposComResultado.map((g) => (
+            <div key={g}>
+              <div className="px-3 py-1 text-[11px] uppercase tracking-wide text-inkSoft bg-paper sticky top-0">
+                {g}
+              </div>
+              {byGrupo[g].map((c) => (
+                <button
+                  type="button"
+                  key={c.codigo}
+                  onClick={() => escolher(c.codigo)}
+                  className={
+                    "w-full text-left px-3 py-1.5 text-sm hover:bg-green/10 " +
+                    (c.codigo === value ? "bg-green/10 font-semibold text-ink" : "text-ink")
+                  }
+                >
+                  <span className="font-mono text-xs text-inkSoft mr-2">{c.codigo}</span>
+                  {c.nome}
+                </button>
+              ))}
+            </div>
           ))}
-        </optgroup>
-      ))}
-    </SelectInput>
+        </div>
+      )}
+    </div>
   );
 }
 
