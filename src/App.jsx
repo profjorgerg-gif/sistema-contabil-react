@@ -3,7 +3,7 @@ import {
   Menu, X, LogOut, School, Users, Building2, LayoutDashboard, BookOpen,
   ClipboardList, FileBarChart, ScrollText, History, Save, Eye, EyeOff,
   Crown, UserCheck, UserX, Pencil, Trash2, Plus, ShieldCheck, Wallet,
-  Landmark, GraduationCap, Layers, Package, ChevronLeft,
+  Landmark, GraduationCap, Layers, Package, ChevronLeft, Download, ExternalLink,
 } from "lucide-react";
 import {
   observarSessao, cadastrar, entrar, sair, recuperarSenha, traduzErroAuth, CODIGO_MESTRE,
@@ -78,6 +78,7 @@ const EMPRESA_ITENS = [
 const APRENDIZADO_ITENS = [
   { id: "introducao", label: "Introdução à Contabilidade", icon: GraduationCap },
   { id: "manual", label: "Manual do Aluno", icon: BookOpen },
+  { id: "manual-professor", label: "Manual do Professor", icon: ShieldCheck },
 ];
 
 // ============================================================================
@@ -766,7 +767,7 @@ function Layout({ perfil, aba, setAba, podeVoltar, aoVoltar, children }) {
           )}
 
           <div className="px-5 pt-4 pb-1 text-[11px] uppercase tracking-wide text-white/40">Aprendizado</div>
-          {APRENDIZADO_ITENS.map((item) => (
+          {APRENDIZADO_ITENS.filter((item) => !(item.id === "manual-professor" && perfil?.tipo === "Aluno")).map((item) => (
             <button
               key={item.id}
               onClick={() => irPara(item.id)}
@@ -863,7 +864,10 @@ function Layout({ perfil, aba, setAba, podeVoltar, aoVoltar, children }) {
 
 function Capa({ perfil, setAba, contagens }) {
   const souAluno = perfil?.tipo === "Aluno";
-  const cardsModulos = souAluno ? [...APRENDIZADO_ITENS, ...EMPRESA_ITENS] : GESTAO_ITENS;
+  const aprendizadoVisivel = souAluno
+    ? APRENDIZADO_ITENS.filter((item) => item.id !== "manual-professor")
+    : APRENDIZADO_ITENS;
+  const cardsModulos = souAluno ? [...aprendizadoVisivel, ...EMPRESA_ITENS] : GESTAO_ITENS;
 
   return (
     <div>
@@ -1438,6 +1442,7 @@ function GestaoPlanoContasView({ perfil, contas, salvarPlanoContas, auditoria, r
     tipo: "Conta Analítica",
     natureza: "Devedora",
     aceitaLancamento: true,
+    controlaEstoque: false,
   });
   const [form, setForm] = useState(formVazio());
   const [sugestaoAtual, setSugestaoAtual] = useState("");
@@ -1470,7 +1475,10 @@ function GestaoPlanoContasView({ perfil, contas, salvarPlanoContas, auditoria, r
 
   const iniciarEdicao = (c) => {
     setEditandoCodigo(c.codigo);
-    setForm({ codigo: c.codigo, nome: c.nome, grupo: c.grupo, tipo: c.tipo, natureza: c.natureza, aceitaLancamento: c.aceitaLancamento });
+    setForm({
+      codigo: c.codigo, nome: c.nome, grupo: c.grupo, tipo: c.tipo, natureza: c.natureza,
+      aceitaLancamento: c.aceitaLancamento, controlaEstoque: !!c.controlaEstoque,
+    });
     setErro("");
     setMostrarForm(true);
   };
@@ -1504,6 +1512,7 @@ function GestaoPlanoContasView({ perfil, contas, salvarPlanoContas, auditoria, r
       tipo: form.tipo,
       natureza: form.natureza,
       aceitaLancamento: !!form.aceitaLancamento,
+      controlaEstoque: !!form.controlaEstoque,
     };
 
     if (editandoCodigo) {
@@ -1613,6 +1622,19 @@ function GestaoPlanoContasView({ perfil, contas, salvarPlanoContas, auditoria, r
                 Sim, esta conta pode receber lançamentos diretamente
               </label>
             </Field>
+            <Field
+              label="Controla estoque (PEPS/UEPS/MP)?"
+              hint="Marque só em contas de mercadoria/produto físico — habilita o campo Quantidade nos Lançamentos e alimenta o Controle de Estoque automaticamente."
+            >
+              <label className="flex items-center gap-2 text-sm text-ink mt-2">
+                <input
+                  type="checkbox"
+                  checked={form.controlaEstoque}
+                  onChange={(e) => setForm({ ...form, controlaEstoque: e.target.checked })}
+                />
+                Sim, esta conta representa um item físico de estoque
+              </label>
+            </Field>
             {erro && <div className="sm:col-span-2 text-sm text-red">{erro}</div>}
             <div className="sm:col-span-2 flex gap-2">
               <Botao type="submit">{editandoCodigo ? "Salvar alterações" : "Adicionar conta"}</Botao>
@@ -1634,6 +1656,7 @@ function GestaoPlanoContasView({ perfil, contas, salvarPlanoContas, auditoria, r
               <th className="py-2 pr-3">Grupo</th>
               <th className="py-2 pr-3">Natureza</th>
               <th className="py-2 pr-3">Lanç.?</th>
+              <th className="py-2 pr-3">Estoque?</th>
               {podeEditar && <th className="py-2 pr-3"></th>}
             </tr>
           </thead>
@@ -1653,6 +1676,7 @@ function GestaoPlanoContasView({ perfil, contas, salvarPlanoContas, auditoria, r
                   <PillNatureza natureza={c.natureza} />
                 </td>
                 <td className="py-1.5 pr-3">{c.aceitaLancamento ? <Pill tone="green">Sim</Pill> : "—"}</td>
+                <td className="py-1.5 pr-3">{c.controlaEstoque ? <Pill tone="gold">Sim</Pill> : "—"}</td>
                 {podeEditar && (
                   <td className="py-1.5 pr-3 whitespace-nowrap">
                     <div className="flex gap-2">
@@ -1669,7 +1693,7 @@ function GestaoPlanoContasView({ perfil, contas, salvarPlanoContas, auditoria, r
             ))}
             {linhas.length === 0 && (
               <tr>
-                <td colSpan={podeEditar ? 7 : 6} className="py-4 text-center text-inkSoft italic">
+                <td colSpan={podeEditar ? 8 : 7} className="py-4 text-center text-inkSoft italic">
                   Nenhuma conta encontrada.
                 </td>
               </tr>
@@ -1842,6 +1866,7 @@ function GestaoLancamentosView({ empresa, perfil, lancamentos, salvarLancamentos
     valor: "",
     documento: "",
     observacoes: "",
+    quantidade: "",
   });
 
   const [form, setForm] = useState(formVazio());
@@ -1883,6 +1908,7 @@ function GestaoLancamentosView({ empresa, perfil, lancamentos, salvarLancamentos
       valor: l.valor,
       documento: l.documento || "",
       observacoes: l.observacoes || "",
+      quantidade: l.quantidade || "",
     });
     setErro("");
   };
@@ -1908,6 +1934,10 @@ function GestaoLancamentosView({ empresa, perfil, lancamentos, salvarLancamentos
     if (editandoId === l.id) cancelar();
   };
 
+  const contaDebitoObj = contaByCode[form.contaDebito];
+  const contaCreditoObj = contaByCode[form.contaCredito];
+  const envolveEstoque = !!(contaDebitoObj?.controlaEstoque || contaCreditoObj?.controlaEstoque);
+
   const salvar = async (e) => {
     e.preventDefault();
     if (form.contaDebito === form.contaCredito) {
@@ -1918,8 +1948,17 @@ function GestaoLancamentosView({ empresa, perfil, lancamentos, salvarLancamentos
       setErro("Preencha data, histórico, as duas contas e o valor.");
       return;
     }
+    if (envolveEstoque && !(Number(form.quantidade) > 0)) {
+      setErro('Esta conta controla estoque — informe a Quantidade movimentada (maior que zero).');
+      return;
+    }
     setErro("");
-    const dados = { ...form, valor: Number(form.valor), tipoOperacao: form.tipoOperacao || undefined };
+    const dados = {
+      ...form,
+      valor: Number(form.valor),
+      tipoOperacao: form.tipoOperacao || undefined,
+      quantidade: envolveEstoque ? Number(form.quantidade) : undefined,
+    };
     if (editandoId) {
       await salvarLancamentos(lanc.map((l) => (l.id === editandoId ? { ...l, ...dados } : l)));
       await registrarAuditoria(
@@ -1999,6 +2038,24 @@ function GestaoLancamentosView({ empresa, perfil, lancamentos, salvarLancamentos
               contaByCode={contaByCode}
             />
           </Field>
+          {envolveEstoque && (
+            <div className="sm:col-span-2">
+              <Field
+                label="Quantidade (movimenta o estoque)"
+                hint={`${contaDebitoObj?.controlaEstoque ? contaDebitoObj.nome : contaCreditoObj.nome} controla estoque — esta quantidade alimenta automaticamente o Controle de Estoque (PEPS/UEPS/MP).`}
+              >
+                <TxtInput
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  required
+                  placeholder="Ex.: 100"
+                  value={form.quantidade}
+                  onChange={(e) => setForm({ ...form, quantidade: e.target.value })}
+                />
+              </Field>
+            </div>
+          )}
           <Field label="Valor (R$)">
             <TxtInput
               type="number"
@@ -2871,17 +2928,6 @@ function computeKardexMP(movs) {
   return { rows, estoqueFinalQtd: qtd, estoqueFinalValor: valorTotal, cmvTotal };
 }
 
-function seedEstoqueMovs() {
-  return [
-    { id: uid("k"), data: "2026-01-02", tipo: "Entrada", quantidade: 100, valorUnit: 10 },
-    { id: uid("k"), data: "2026-01-08", tipo: "Saída", quantidade: 60 },
-    { id: uid("k"), data: "2026-01-15", tipo: "Entrada", quantidade: 80, valorUnit: 12 },
-    { id: uid("k"), data: "2026-01-22", tipo: "Saída", quantidade: 90 },
-    { id: uid("k"), data: "2026-01-28", tipo: "Entrada", quantidade: 50, valorUnit: 11 },
-    { id: uid("k"), data: "2026-01-30", tipo: "Saída", quantidade: 40 },
-  ];
-}
-
 function KardexColuna({ titulo, k }) {
   return (
     <div className="min-w-[280px]">
@@ -2923,65 +2969,70 @@ function KardexColuna({ titulo, k }) {
   );
 }
 
-function IntroEstoque({ perfil, empresa, estoqueMovs, salvarEstoqueMovs, registrarAuditoria }) {
-  const podeExcluir = !!perfil?.permissoes?.excluirLancamentos;
-  const movs = estoqueMovs || [];
-  const [form, setForm] = useState({ data: new Date().toISOString().slice(0, 10), tipo: "Entrada", quantidade: "", valorUnit: "" });
-  const [erro, setErro] = useState("");
+// Deriva as movimentações de estoque diretamente dos lançamentos da empresa —
+// qualquer lançamento cuja conta débito ou crédito tenha controlaEstoque=true
+// vira uma "Entrada" (débito) ou "Saída" (crédito) na ficha kardex. Não existe
+// mais cadastro manual de movimentação: é só ler o extrato dos Lançamentos.
+function derivarMovimentosEstoque(lancamentos, contaByCode) {
+  return (lancamentos || [])
+    .map((l) => {
+      const deb = contaByCode[l.contaDebito];
+      const cred = contaByCode[l.contaCredito];
+      const quantidade = Number(l.quantidade) || 0;
+      if (deb?.controlaEstoque && quantidade > 0) {
+        return {
+          id: l.id, data: l.data, tipo: "Entrada", quantidade,
+          valorUnit: quantidade ? Number(l.valor) / quantidade : 0,
+          contaCodigo: deb.codigo, contaNome: deb.nome, historico: l.historico,
+        };
+      }
+      if (cred?.controlaEstoque && quantidade > 0) {
+        return {
+          id: l.id, data: l.data, tipo: "Saída", quantidade,
+          contaCodigo: cred.codigo, contaNome: cred.nome, historico: l.historico,
+        };
+      }
+      return null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.data.localeCompare(b.data));
+}
 
+function GestaoEstoqueView({ empresa, lancamentos, contaByCode }) {
   if (!empresa) {
     return <div className="text-sm text-inkSoft italic">Selecione uma empresa ativa acima para ver o estoque.</div>;
   }
+
+  const contasDeEstoque = Object.values(contaByCode).filter((c) => c.controlaEstoque);
+  const movs = derivarMovimentosEstoque(lancamentos, contaByCode);
 
   const peps = computeKardexPEPS(movs);
   const ueps = computeKardexUEPS(movs);
   const mp = computeKardexMP(movs);
 
-  const salvar = async (e) => {
-    e.preventDefault();
-    const quantidade = Number(form.quantidade);
-    if (form.tipo === "Entrada" && !(Number(form.valorUnit) > 0)) {
-      setErro("Informe o valor unitário da entrada.");
-      return;
-    }
-    const saldoAtual = movs.reduce((s, m) => s + (m.tipo === "Entrada" ? Number(m.quantidade) : -Number(m.quantidade)), 0);
-    if (form.tipo === "Saída" && quantidade > saldoAtual + 0.0001) {
-      setErro(`Estoque insuficiente: há apenas ${saldoAtual} unidade(s) disponível(is).`);
-      return;
-    }
-    setErro("");
-    const novoMov = {
-      id: uid("k"), data: form.data, tipo: form.tipo, quantidade,
-      valorUnit: form.tipo === "Entrada" ? Number(form.valorUnit) : undefined,
-    };
-    await salvarEstoqueMovs([...movs, novoMov]);
-    await registrarAuditoria("criar", "estoque", `Registrou movimentação de estoque na empresa "${empresa.nome}": ${form.tipo} de ${quantidade} unidade(s)`);
-    setForm({ data: new Date().toISOString().slice(0, 10), tipo: form.tipo, quantidade: "", valorUnit: "" });
-  };
-
-  const carregarExemplo = async () => {
-    const novos = seedEstoqueMovs();
-    await salvarEstoqueMovs([...movs, ...novos]);
-    await registrarAuditoria("criar", "estoque", `Carregou ${novos.length} movimentações de estoque de exemplo na empresa "${empresa.nome}"`);
-  };
-
-  const limparTudo = async () => {
-    if (!podeExcluir) {
-      alert("Você não tem permissão para excluir movimentações de estoque.");
-      return;
-    }
-    if (!confirm("Excluir todas as movimentações de estoque cadastradas?")) return;
-    await salvarEstoqueMovs([]);
-    await registrarAuditoria("excluir", "estoque", `Excluiu TODAS as ${movs.length} movimentações de estoque da empresa "${empresa.nome}"`);
-  };
-
   return (
     <div>
       <h3 className="font-serif font-semibold text-ink text-lg mb-1">Controle de Estoque — {empresa.nome}</h3>
       <p className="text-sm text-inkSoft mb-4">
-        Compare, com os mesmos dados de movimentação, como cada critério de avaliação de estoque
-        afeta o Custo da Mercadoria Vendida (CMV) e o valor do estoque final.
+        Somente consulta — atualizado automaticamente a partir dos lançamentos desta empresa.
+        Compare como cada critério de avaliação afeta o Custo da Mercadoria Vendida (CMV) e o
+        valor do estoque final.
       </p>
+
+      <Card className="mb-4">
+        <div className="text-sm text-inkSoft">
+          <b className="text-ink">Como movimentar o estoque:</b> vá ao módulo{" "}
+          <b>Lançamentos</b> e registre a compra ou a venda/consumo normalmente. Quando a conta de
+          débito ou de crédito for uma conta marcada como "Controla estoque" no Plano de Contas,
+          um campo <b>Quantidade</b> aparece no formulário — é ele que alimenta esta tela.
+        </div>
+        {contasDeEstoque.length > 0 && (
+          <div className="text-xs text-inkSoft mt-2">
+            Contas de estoque cadastradas no plano:{" "}
+            {contasDeEstoque.map((c) => `${c.codigo} — ${c.nome}`).join(" · ")}
+          </div>
+        )}
+      </Card>
 
       <div className="grid sm:grid-cols-3 gap-3 mb-4">
         <ConceptCard titulo="PEPS · FIFO — Primeiro que Entra, Primeiro que Sai">
@@ -3003,58 +3054,66 @@ function IntroEstoque({ perfil, empresa, estoqueMovs, salvarEstoqueMovs, registr
         </ConceptCard>
       </div>
 
-      <h3 className="font-serif font-semibold text-ink mb-3">Movimentações de estoque</h3>
-      <Card className="mb-4">
-        <form onSubmit={salvar} className="grid sm:grid-cols-4 gap-3">
-          <Field label="Data">
-            <TxtInput type="date" required value={form.data} onChange={(e) => setForm({ ...form, data: e.target.value })} />
-          </Field>
-          <Field label="Movimento">
-            <SelectInput value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value })}>
-              <option value="Entrada">Entrada (compra)</option>
-              <option value="Saída">Saída (venda/consumo)</option>
-            </SelectInput>
-          </Field>
-          <Field label="Quantidade">
-            <TxtInput type="number" min="0.01" step="0.01" required value={form.quantidade} onChange={(e) => setForm({ ...form, quantidade: e.target.value })} />
-          </Field>
-          {form.tipo === "Entrada" && (
-            <Field label="Valor unitário (R$)">
-              <TxtInput type="number" min="0.01" step="0.01" required value={form.valorUnit} onChange={(e) => setForm({ ...form, valorUnit: e.target.value })} />
-            </Field>
-          )}
-          {erro && <div className="sm:col-span-4 text-sm text-red">{erro}</div>}
-          <div className="sm:col-span-4 flex flex-wrap gap-2">
-            <Botao type="submit">Adicionar movimentação</Botao>
-            <Botao type="button" variant="ghost" onClick={carregarExemplo}>Carregar exemplo</Botao>
-            {podeExcluir && (
-              <Botao type="button" variant="ghost" onClick={limparTudo}>Limpar tudo</Botao>
-            )}
+      {movs.length === 0 ? (
+        <Card>
+          <div className="text-sm text-inkSoft italic">
+            Nenhuma movimentação de estoque ainda. Registre uma compra ou venda envolvendo uma
+            conta de estoque no módulo Lançamentos para ver a ficha kardex aqui.
           </div>
-        </form>
-      </Card>
+        </Card>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
+            <Card><div className="text-xs text-inkSoft">Estoque Final — PEPS</div><div className="font-semibold text-ink">{peps.estoqueFinalQtd} un · {money(peps.estoqueFinalValor)}</div></Card>
+            <Card><div className="text-xs text-inkSoft">Estoque Final — UEPS</div><div className="font-semibold text-ink">{ueps.estoqueFinalQtd} un · {money(ueps.estoqueFinalValor)}</div></Card>
+            <Card><div className="text-xs text-inkSoft">Estoque Final — Média Ponderada</div><div className="font-semibold text-ink">{mp.estoqueFinalQtd} un · {money(mp.estoqueFinalValor)}</div></Card>
+            <Card><div className="text-xs text-inkSoft">CMV — PEPS</div><div className="font-semibold text-red">{money(peps.cmvTotal)}</div></Card>
+            <Card><div className="text-xs text-inkSoft">CMV — UEPS</div><div className="font-semibold text-red">{money(ueps.cmvTotal)}</div></Card>
+            <Card><div className="text-xs text-inkSoft">CMV — Média Ponderada</div><div className="font-semibold text-red">{money(mp.cmvTotal)}</div></Card>
+          </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
-        <Card><div className="text-xs text-inkSoft">Estoque Final — PEPS</div><div className="font-semibold text-ink">{peps.estoqueFinalQtd} un · {money(peps.estoqueFinalValor)}</div></Card>
-        <Card><div className="text-xs text-inkSoft">Estoque Final — UEPS</div><div className="font-semibold text-ink">{ueps.estoqueFinalQtd} un · {money(ueps.estoqueFinalValor)}</div></Card>
-        <Card><div className="text-xs text-inkSoft">Estoque Final — Média Ponderada</div><div className="font-semibold text-ink">{mp.estoqueFinalQtd} un · {money(mp.estoqueFinalValor)}</div></Card>
-        <Card><div className="text-xs text-inkSoft">CMV — PEPS</div><div className="font-semibold text-red">{money(peps.cmvTotal)}</div></Card>
-        <Card><div className="text-xs text-inkSoft">CMV — UEPS</div><div className="font-semibold text-red">{money(ueps.cmvTotal)}</div></Card>
-        <Card><div className="text-xs text-inkSoft">CMV — Média Ponderada</div><div className="font-semibold text-red">{money(mp.cmvTotal)}</div></Card>
-      </div>
+          <h3 className="font-serif font-semibold text-ink mb-3">Movimentações (origem: Lançamentos)</h3>
+          <Card className="overflow-x-auto mb-6">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs text-inkSoft border-b border-line">
+                  <th className="py-2 pr-3">Data</th>
+                  <th className="py-2 pr-3">Movimento</th>
+                  <th className="py-2 pr-3">Conta</th>
+                  <th className="py-2 pr-3">Histórico</th>
+                  <th className="py-2 pr-3 text-right">Quantidade</th>
+                </tr>
+              </thead>
+              <tbody>
+                {movs.map((m) => (
+                  <tr key={m.id} className="border-b border-line/50">
+                    <td className="py-1.5 pr-3 whitespace-nowrap">{fmtDate(m.data)}</td>
+                    <td className="py-1.5 pr-3">
+                      <Pill tone={m.tipo === "Entrada" ? "green" : "gold"}>{m.tipo}</Pill>
+                    </td>
+                    <td className="py-1.5 pr-3 font-mono text-xs">{m.contaCodigo}</td>
+                    <td className="py-1.5 pr-3">{m.historico}</td>
+                    <td className="py-1.5 pr-3 text-right">{m.quantidade}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
 
-      <h3 className="font-serif font-semibold text-ink mb-3">Ficha de controle (kardex) comparativa</h3>
-      <Card className="overflow-x-auto">
-        <div className="grid sm:grid-cols-3 gap-4">
-          <KardexColuna titulo="PEPS" k={peps} />
-          <KardexColuna titulo="UEPS" k={ueps} />
-          <KardexColuna titulo="Média Ponderada" k={mp} />
-        </div>
-      </Card>
-      <div className="text-xs text-inkSoft mt-3">
-        Os três métodos partem exatamente das mesmas movimentações — altere-as acima para ver o
-        impacto de cada critério no CMV e no estoque final em tempo real.
-      </div>
+          <h3 className="font-serif font-semibold text-ink mb-3">Ficha de controle (kardex) comparativa</h3>
+          <Card className="overflow-x-auto">
+            <div className="grid sm:grid-cols-3 gap-4">
+              <KardexColuna titulo="PEPS" k={peps} />
+              <KardexColuna titulo="UEPS" k={ueps} />
+              <KardexColuna titulo="Média Ponderada" k={mp} />
+            </div>
+          </Card>
+          <div className="text-xs text-inkSoft mt-3">
+            Os três métodos partem exatamente das mesmas movimentações — lance mais compras e
+            vendas em Lançamentos para ver o impacto de cada critério no CMV e no estoque final.
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -3075,8 +3134,8 @@ function GestaoIntroducaoView({ contas }) {
 // ---- Manual do Aluno ----
 
 const MANUAL_SUBS = [
-  { id: "inicio", label: "Primeiros Passos" },
-  { id: "lancar", label: "Como Lançar" },
+  { id: "acesso", label: "Cadastro e Acesso" },
+  { id: "ciclo", label: "Lançamentos (Ciclo Contábil)" },
   { id: "relatoriosdica", label: "Entendendo os Relatórios" },
   { id: "faq", label: "Perguntas Frequentes" },
   { id: "glossario", label: "Glossário" },
@@ -3201,11 +3260,104 @@ function PassoManual({ n, titulo, children }) {
   );
 }
 
-function ManualInicio() {
+// ---- Helpers de ilustração reutilizáveis para o Manual (tabelas, DRE, Balanço) ----
+
+function TabelaIlustrada({ colunas, linhas, legenda, badgeColuna }) {
+  return (
+    <div className="border-2 border-dashed border-line rounded-xl p-4 bg-white mb-4 overflow-x-auto">
+      {legenda && <div className="text-[10px] uppercase tracking-wide text-inkSoft mb-2">{legenda}</div>}
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="bg-green text-white">
+            {colunas.map((c, i) => (
+              <th key={i} className="text-left py-1.5 px-2 font-semibold relative whitespace-nowrap">
+                {badgeColuna === i && <NumBadge n={1} />}
+                {c}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {linhas.map((linha, li) => (
+            <tr key={li} className={li % 2 === 0 ? "bg-paper" : "bg-white"}>
+              {linha.map((cel, ci) => (
+                <td key={ci} className="py-1.5 px-2 border-b border-line/50 whitespace-nowrap">{cel}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function SubSecaoTitulo({ numero, children }) {
+  return (
+    <div className="flex items-center gap-2 mt-6 mb-2">
+      <div className="w-1.5 h-5 bg-gold rounded shrink-0" />
+      <h4 className="font-serif font-bold text-green text-base">
+        {numero} {children}
+      </h4>
+    </div>
+  );
+}
+
+function DRECascataIlustrada({ linhas }) {
+  return (
+    <div className="border-2 border-dashed border-line rounded-xl p-4 bg-white mb-4">
+      {linhas.map(([label, valor, estilo], i) => (
+        <div
+          key={i}
+          className={
+            "flex items-center justify-between py-1 text-sm " +
+            (estilo === "final"
+              ? "font-bold border-t-2 border-ink pt-2 mt-1"
+              : estilo === "sub"
+              ? "font-semibold border-t border-line pt-1"
+              : "text-inkSoft")
+          }
+        >
+          <span>{label}</span>
+          <span className="font-mono">{valor}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function BalancoIlustrado({ ativo, passivo }) {
+  const Coluna = ({ titulo, linhas }) => (
+    <div>
+      <h5 className="font-serif font-bold text-green text-sm mb-2">{titulo}</h5>
+      {linhas.map(([label, valor, estilo], i) => (
+        <div
+          key={i}
+          className={
+            "flex items-center justify-between py-1 text-sm " +
+            (estilo === "final" ? "font-bold border-t-2 border-ink pt-2 mt-1" : "")
+          }
+        >
+          <span>{label}</span>
+          <span className="font-mono">{valor}</span>
+        </div>
+      ))}
+    </div>
+  );
+  return (
+    <div className="border-2 border-dashed border-line rounded-xl p-4 bg-white mb-4 grid sm:grid-cols-2 gap-6">
+      <Coluna titulo="ATIVO" linhas={ativo} />
+      <Coluna titulo="PASSIVO + PATRIMÔNIO LÍQUIDO" linhas={passivo} />
+    </div>
+  );
+}
+
+function ManualAcesso() {
   return (
     <div>
-      <h3 className="font-serif font-semibold text-ink text-lg mb-1">Primeiros passos no sistema</h3>
-      <p className="text-sm text-inkSoft mb-4">Siga esta ordem na primeira vez que você usar o sistema.</p>
+      <h3 className="font-serif font-semibold text-ink text-lg mb-1">Cadastro do Aluno e Acesso</h3>
+      <p className="text-sm text-inkSoft mb-4">
+        Tudo que envolve criar sua conta e entrar no sistema pela primeira vez.
+      </p>
 
       <h4 className="font-semibold text-ink text-sm mb-1">Tela de entrada (Login)</h4>
       <p className="text-sm text-inkSoft mb-3">
@@ -3218,27 +3370,37 @@ function ManualInicio() {
       <p className="text-sm text-inkSoft mb-3">
         Ainda não tem conta? Clique em "Ainda não tenho conta — cadastrar", na tela de login, e
         preencha os campos abaixo. Como Aluno, a Turma é obrigatória — se ela ainda não aparecer na
-        lista, peça ao professor(a) para cadastrá-la antes. Depois de se cadastrar, um usuário{" "}
-        <b>Mestre</b> ou <b>Professor</b> precisa <b>aprovar</b> sua conta antes de você conseguir
-        entrar.
+        lista, peça ao professor(a) para cadastrá-la antes.
       </p>
       <IlustracaoCadastro />
 
+      <h4 className="font-semibold text-ink text-sm mb-1">Aprovação do cadastro</h4>
+      <div className="text-sm text-inkSoft bg-gold/10 border border-gold/40 rounded-lg p-3 mb-4">
+        Depois de se cadastrar, sua conta fica <b>pendente</b> até um usuário <b>Mestre</b> ou{" "}
+        <b>Professor</b> aprová-la. Você só consegue entrar depois dessa aprovação — avise seu
+        professor(a) que acabou de se cadastrar.
+      </div>
+
+      <h4 className="font-semibold text-ink text-sm mb-1">Empresa ativa</h4>
+      <p className="text-sm text-inkSoft mb-3">
+        Depois de entrar, quase todos os módulos do ciclo contábil trabalham "dentro" de uma
+        empresa específica. Confirme sempre qual empresa está selecionada antes de lançar algo.
+      </p>
       <IlustracaoEmpresaAtiva />
+
+      <h4 className="font-semibold text-ink text-sm mb-1">Resumo geral dos primeiros passos</h4>
       <Card>
         <PassoManual n={1} titulo="Confira se sua turma já está cadastrada">
           No módulo <b>Turmas</b>, veja se a sua já aparece na lista. Se não, peça ao professor
           para cadastrá-la — não é possível criar um usuário sem escolher uma turma já existente.
         </PassoManual>
-        <PassoManual n={2} titulo="Confira se você já está cadastrado">
-          No módulo <b>Usuários</b>, veja se seu nome já aparece na lista. Se não, cadastre-se
-          informando nome, e-mail, senha, perfil (Aluno) e a turma — ou peça ao professor para
-          cadastrá-lo.
+        <PassoManual n={2} titulo="Cadastre-se e aguarde a aprovação">
+          Preencha nome, e-mail, senha, perfil (Aluno) e a turma. Um Mestre ou Professor precisa
+          aprovar sua conta.
         </PassoManual>
         <PassoManual n={3} titulo="Selecione a empresa ativa">
-          Nos módulos de Saldos, Lançamentos, Consulta por Conta, Balancete, DRE, Encerramento e
-          Balanço Patrimonial existe um seletor de <b>Empresa ativa</b> no topo. Confirme que está
-          correto antes de começar — tudo o que você fizer fica registrado nessa empresa.
+          Confirme que está correto antes de começar — tudo o que você fizer fica registrado
+          nessa empresa.
         </PassoManual>
         <PassoManual n={4} titulo="Conheça o Plano de Contas">
           Antes de lançar, dê uma olhada no módulo <b>Plano de Contas</b> para se familiarizar com
@@ -3249,13 +3411,13 @@ function ManualInicio() {
           de cada vez, em partidas dobradas.
         </PassoManual>
         <PassoManual n={6} titulo="Acompanhe os relatórios">
-          Depois de lançar, confira o <b>Balancete</b> (deve fechar "OK"), a <b>DRE</b> e o{" "}
+          Depois de lançar, confira o <b>Balancete</b> (deve fechar "Fechado"), a <b>DRE</b> e o{" "}
           <b>Balanço Patrimonial</b>. Eles são calculados automaticamente, sem precisar de nenhum
           botão de "atualizar".
         </PassoManual>
         <PassoManual n={7} titulo="Seus dados já ficam salvos na nuvem">
-          Diferente da versão antiga, agora tudo é sincronizado automaticamente pelo Firebase — não
-          é mais preciso baixar backup manual para não perder o trabalho.
+          Diferente da versão antiga, agora tudo é sincronizado automaticamente — não é mais
+          preciso baixar backup manual para não perder o trabalho.
         </PassoManual>
       </Card>
       <div className="text-xs text-inkSoft mt-3">
@@ -3268,24 +3430,69 @@ function ManualInicio() {
   );
 }
 
-function ManualLancar() {
+function ManualCicloContabil() {
   return (
     <div>
-      <h3 className="font-serif font-semibold text-ink text-lg mb-1">Como registrar um lançamento</h3>
+      <h3 className="font-serif font-semibold text-ink text-lg mb-1">Lançamentos (Ciclo Contábil)</h3>
       <p className="text-sm text-inkSoft mb-4">
+        Todo o fluxo operacional de uma empresa dentro do sistema — do plano de contas até o
+        balanço final — organizado na ordem em que você normalmente usa.
+      </p>
+
+      <SubSecaoTitulo numero="1.">Plano de Contas</SubSecaoTitulo>
+      <p className="text-sm text-inkSoft mb-3">
+        As 292 contas do curso, organizadas por Grupo, Tipo e Natureza. Só as contas analíticas e
+        subcontas recebem lançamento.
+      </p>
+      <TabelaIlustrada
+        legenda="Busque por código ou nome para filtrar as 292 contas"
+        colunas={["Código", "Conta", "Nível", "Grupo", "Natureza", "Lanç.?", "Estoque?"]}
+        badgeColuna={0}
+        linhas={[
+          ["1.1.1", "Caixa e Equivalentes de Caixa", "3", "Ativo", "Devedora", "—", "—"],
+          ["1.1.1.01", "Caixa Geral", "4", "Ativo", "Devedora", "Sim", "—"],
+          ["1.1.3.01", "Mercadorias para Revenda", "4", "Ativo", "Devedora", "Sim", "Sim"],
+        ]}
+      />
+      <p className="text-xs text-inkSoft mb-2">
+        Contas marcadas "Sim" na coluna "Estoque?" são contas físicas de estoque — usá-las num
+        lançamento habilita o campo Quantidade (veja a seção 5, Controle de Estoque). Só um Mestre
+        pode marcar essa opção, na edição da conta.
+      </p>
+
+      <SubSecaoTitulo numero="2.">Saldos Iniciais</SubSecaoTitulo>
+      <p className="text-sm text-inkSoft mb-3">
+        Registre o saldo com que cada conta entra no período — devedor ou credor. Deixe em branco
+        as contas sem saldo inicial.
+      </p>
+      <TabelaIlustrada
+        legenda="Preencha só um dos dois lados por conta"
+        colunas={["Código", "Conta", "Natureza", "Saldo Devedor", "Saldo Credor"]}
+        badgeColuna={3}
+        linhas={[
+          ["1.1.1.01", "Caixa Geral", "Devedora", "1.500,00", ""],
+          ["2.1.1.01", "Fornecedores", "Credora", "", "3.000,00"],
+        ]}
+      />
+      <p className="text-xs text-inkSoft mb-2">
+        O sistema mostra "OK" quando a soma de todos os saldos devedores bate com a soma de todos
+        os credores.
+      </p>
+
+      <SubSecaoTitulo numero="3.">Lançamentos</SubSecaoTitulo>
+      <p className="text-sm text-inkSoft mb-3">
         Todo lançamento representa um fato contábil e sempre usa duas contas: uma a débito e uma a
         crédito, no mesmo valor.
       </p>
       <IlustracaoLancamento />
-      <Card>
+      <Card className="mb-4">
         <PassoManual n={1} titulo="Data">Informe a data em que o fato ocorreu (não precisa ser a data de hoje).</PassoManual>
         <PassoManual n={2} titulo="Tipo de operação">
           Campo opcional — hoje com "Compra" ou "Venda". Ao escolher, o campo Histórico é
-          preenchido automaticamente com uma sugestão (você pode editar o texto à vontade).
+          preenchido automaticamente com uma sugestão.
         </PassoManual>
         <PassoManual n={3} titulo="Histórico">
-          Descreva o fato em poucas palavras — ex.: "Venda de mercadorias à vista", "Pagamento de
-          aluguel do mês".
+          Descreva o fato em poucas palavras — ex.: "Venda de mercadorias à vista".
         </PassoManual>
         <PassoManual n={4} titulo="Conta débito e Conta crédito">
           Digite o código ou nome da conta para filtrar a lista e escolha. Nunca use a mesma conta
@@ -3293,28 +3500,143 @@ function ManualLancar() {
         </PassoManual>
         <PassoManual n={5} titulo="Valor">Digite o valor da operação — ele será usado igualmente nas duas contas.</PassoManual>
         <PassoManual n={6} titulo="Documento e Observações">
-          Campos opcionais, úteis para anotar o número da nota fiscal ou detalhes extras do
-          lançamento.
+          Campos opcionais, úteis para anotar o número da nota fiscal ou detalhes extras.
         </PassoManual>
         <PassoManual n={7} titulo="Adicionar lançamento">
-          Clique no botão — o lançamento aparece imediatamente no Livro Diário logo abaixo, e todos
-          os relatórios já são recalculados.
+          Clique no botão — o lançamento aparece imediatamente no Livro Diário logo abaixo, e
+          todos os relatórios já são recalculados.
+        </PassoManual>
+        <PassoManual n={8} titulo="Quantidade (só aparece em contas de estoque)">
+          Se a conta débito ou crédito escolhida controla estoque (ex.: "Mercadorias para
+          Revenda"), um campo extra "Quantidade" aparece no formulário — preencha com a
+          quantidade movimentada.
         </PassoManual>
       </Card>
-      <div className="text-xs text-inkSoft mt-3 space-y-2">
+      <div className="text-xs text-inkSoft mb-4 space-y-2">
         <p>
-          <b>Exemplo prático:</b> "Comprei mercadorias à vista por R$ 500" → Conta débito: 1.1.3.01
-          Mercadorias para Revenda · Conta crédito: 1.1.1.01 Caixa Geral · Valor: 500,00.
+          <b>Exemplo prático:</b> "Comprei 100 unidades de mercadorias à vista por R$ 500" → Conta
+          débito: 1.1.3.01 Mercadorias para Revenda · Conta crédito: 1.1.1.01 Caixa Geral · Valor:
+          500,00 · Quantidade: 100.
         </p>
         <p>
           <b>Errou um lançamento?</b> Se você tiver permissão, clique em "Editar" na linha
-          correspondente do Livro Diário para corrigir os dados sem precisar excluir e lançar de
-          novo — ou em "Excluir", se preferir refazer do zero.
+          correspondente do Livro Diário — ou em "Excluir", se preferir refazer do zero.
         </p>
-        <p>
-          <b>Muitos lançamentos na lista?</b> Use a caixa de busca acima do Livro Diário para
-          filtrar por histórico, conta, documento ou observação, e o campo "Tipo" para ver só
-          Compras ou só Vendas.
+      </div>
+
+      <SubSecaoTitulo numero="4.">Consulta por Conta</SubSecaoTitulo>
+      <p className="text-sm text-inkSoft mb-3">
+        Escolha uma conta específica e veja o extrato completo dela — todos os lançamentos que a
+        afetaram, com o saldo acumulado após cada um, como um extrato bancário.
+      </p>
+      <TabelaIlustrada
+        legenda="Escolha a conta no topo da tela"
+        colunas={["Data", "Histórico", "Contrapartida", "Débito", "Crédito", "Saldo Acum."]}
+        badgeColuna={0}
+        linhas={[
+          ["—", "Saldo inicial", "—", "", "", "1.500,00"],
+          ["03/08/2026", "Venda de mercadorias à vista", "4.1.1.01", "500,00", "", "2.000,00"],
+        ]}
+      />
+
+      <SubSecaoTitulo numero="5.">Controle de Estoque</SubSecaoTitulo>
+      <p className="text-sm text-inkSoft mb-3">
+        Este módulo é <b>só consulta</b> — não existe formulário para cadastrar movimentação aqui.
+        O estoque é atualizado automaticamente a partir dos lançamentos: quando a conta débito ou
+        crédito de um lançamento controla estoque, um campo extra Quantidade aparece em
+        Lançamentos — é ele que alimenta esta tela.
+      </p>
+      <TabelaIlustrada
+        legenda='A coluna "Movimento" é decidida sozinha: débito na conta de estoque = Entrada, crédito = Saída'
+        colunas={["Data", "Movimento", "Conta", "Histórico", "Quantidade"]}
+        linhas={[
+          ["10/08/2026", "Entrada", "1.1.3.01", "Compra de mercadorias à vista", "100"],
+          ["15/08/2026", "Saída", "1.1.3.01", "Venda de mercadorias à vista", "60"],
+        ]}
+      />
+      <p className="text-xs text-inkSoft mb-2">
+        PEPS · FIFO baixa pelo custo dos lotes mais antigos. UEPS · LIFO baixa pelo custo dos
+        lotes mais recentes —{" "}
+        <span className="text-red">não é aceito pela legislação fiscal brasileira</span>, aparece
+        aqui só para fins comparativos. Média Ponderada recalcula o custo médio a cada entrada.
+      </p>
+
+      <SubSecaoTitulo numero="6.">Balancete de Verificação</SubSecaoTitulo>
+      <p className="text-sm text-inkSoft mb-3">
+        Lista todas as contas com movimento no período, com seus totais de débito, crédito e
+        saldo — a principal ferramenta para conferir se os lançamentos estão equilibrados.
+      </p>
+      <TabelaIlustrada
+        legenda="Somente contas com movimento aparecem na lista"
+        colunas={["Código", "Conta", "Natureza", "Tot. Débitos", "Tot. Créditos", "Saldo Dev.", "Saldo Cred."]}
+        linhas={[
+          ["1.1.1.01", "Caixa Geral", "Devedora", "1.500,00", "500,00", "1.000,00", ""],
+          ["2.1.1.01", "Fornecedores", "Credora", "300,00", "3.000,00", "", "2.700,00"],
+        ]}
+      />
+      <div className="flex items-center gap-3 mb-4">
+        <SeloFechamento ok rotulo="Balancete" formula="D = C" />
+        <p className="text-sm text-inkSoft">
+          Fique de olho neste selo: ele confirma se a soma de todos os débitos bate com a soma de
+          todos os créditos.
+        </p>
+      </div>
+
+      <SubSecaoTitulo numero="7.">DRE (Demonstração do Resultado do Exercício)</SubSecaoTitulo>
+      <p className="text-sm text-inkSoft mb-3">
+        Apura o resultado do período (lucro ou prejuízo) — leia de cima para baixo, cada linha
+        parte do resultado da anterior.
+      </p>
+      <DRECascataIlustrada
+        linhas={[
+          ["Receita Bruta de Vendas e Serviços", "R$ 3.500,00", "normal"],
+          ["(-) Deduções da Receita", "R$ 0,00", "normal"],
+          ["(=) Receita Líquida", "R$ 3.500,00", "sub"],
+          ["(-) Custo das Mercadorias Vendidas", "R$ 0,00", "normal"],
+          ["(=) Resultado Bruto", "R$ 3.500,00", "sub"],
+          ["(-) Despesas Administrativas", "R$ 0,00", "normal"],
+          ["(=) Resultado Operacional", "R$ 3.500,00", "sub"],
+          ["(=) RESULTADO LÍQUIDO DO EXERCÍCIO", "R$ 3.500,00", "final"],
+        ]}
+      />
+
+      <SubSecaoTitulo numero="8.">Encerramento (conta ARE)</SubSecaoTitulo>
+      <p className="text-sm text-inkSoft mb-3">
+        Ao final do período, as contas de Receita, Despesa e Custo precisam ser "zeradas" — o
+        Encerramento transfere seus saldos para a conta ARE (7.1.01) e, de lá, para o Patrimônio
+        Líquido.
+      </p>
+      <TabelaIlustrada
+        legenda="O sistema sugere estes lançamentos com base nos totais apurados"
+        colunas={["Conta Débito", "Conta Crédito", "Valor", "Observação"]}
+        linhas={[
+          ["contas 4.*", "7.1.01", "3.500,00", "Encerramento das contas de Receita"],
+          ["7.1.01", "3.9", "3.500,00", "Lucro do período: PL recebe o resultado"],
+        ]}
+      />
+
+      <SubSecaoTitulo numero="9.">Balanço Patrimonial</SubSecaoTitulo>
+      <p className="text-sm text-inkSoft mb-3">
+        Retrata a posição patrimonial numa data específica: de um lado o que a empresa possui
+        (Ativo), do outro como isso foi financiado (Passivo + Patrimônio Líquido).
+      </p>
+      <BalancoIlustrado
+        ativo={[
+          ["Ativo Circulante", "R$ 4.700,00", "normal"],
+          ["Ativo Não Circulante", "R$ 0,00", "normal"],
+          ["TOTAL DO ATIVO", "R$ 4.700,00", "final"],
+        ]}
+        passivo={[
+          ["Passivo Circulante", "R$ 0,00", "normal"],
+          ["Patrimônio Líquido", "R$ 1.200,00", "normal"],
+          ["Resultado do Exercício (DRE)", "R$ 3.500,00", "normal"],
+          ["TOTAL DO PASSIVO + PL", "R$ 4.700,00", "final"],
+        ]}
+      />
+      <div className="flex items-center gap-3">
+        <SeloFechamento ok rotulo="Balanço" formula="A = P+PL" />
+        <p className="text-sm text-inkSoft">
+          Assim como no Balancete, esse selo confirma se o Ativo é igual ao Passivo + PL.
         </p>
       </div>
     </div>
@@ -3323,19 +3645,27 @@ function ManualLancar() {
 
 function ManualRelatorios() {
   const itens = [
-    ["Balancete", 'Lista o total de débitos, créditos e o saldo de cada conta movimentada. O rótulo no canto deve mostrar "Fechado" — se aparecer "Divergente", algum lançamento está com valores diferentes entre débito e crédito.'],
-    ["DRE", "Leia de cima para baixo: começa na Receita Bruta e vai subtraindo deduções, custos e despesas até chegar ao Resultado Líquido do Exercício (lucro ou prejuízo)."],
-    ["Encerramento (ARE)", "Mostra os totais de Receitas, Despesas e Custos do período e sugere os lançamentos de encerramento contra a conta 7.1.01."],
-    ["Balanço Patrimonial", 'Mostra Ativo de um lado e Passivo + Patrimônio Líquido do outro. O selo deve indicar "Fechado", confirmando que Ativo = Passivo + PL.'],
-    ["Consulta por Conta", "Escolha uma conta específica e veja todos os lançamentos que a afetaram, com o saldo acumulado após cada um — como um extrato bancário."],
+    ["Balancete — o que significa", 'É uma ferramenta de conferência, não um relatório oficial de divulgação. Prova que o princípio das partidas dobradas foi respeitado: se o total debitado é igual ao total creditado, o Balancete "fecha". É o primeiro lugar a olhar quando algo parece errado.'],
+    ["DRE — o que significa", "Responde: a empresa deu lucro ou prejuízo, e por quê? Parte da Receita Bruta e vai subtraindo, em cascata, tudo que consome essa receita, até sobrar o Resultado Líquido."],
+    ["Encerramento (ARE) — o que significa", "As contas de Receita, Despesa e Custo só valem para um período — precisam voltar a zero no seguinte. O Encerramento transfere o saldo dessas contas para a conta ARE e, de lá, para o Patrimônio Líquido."],
+    ["Balanço Patrimonial — o que significa", "É a fotografia da empresa num instante: tudo que ela possui (Ativo) de um lado, e de onde veio o dinheiro para ter isso (Passivo + PL) do outro. Os dois lados são sempre iguais."],
+    ["Consulta por Conta — o que significa", "É o razão de uma única conta: a história completa dela, lançamento por lançamento, com saldo acumulado — serve para investigar de onde veio um valor."],
   ];
   return (
     <div>
-      <h3 className="font-serif font-semibold text-ink text-lg mb-4">Como ler os relatórios</h3>
-      <div className="grid sm:grid-cols-2 gap-3">
+      <h3 className="font-serif font-semibold text-ink text-lg mb-1">Entendendo os relatórios</h3>
+      <p className="text-sm text-inkSoft mb-4">
+        A seção anterior mostrou como usar cada tela. Esta explica o que cada relatório
+        significa dentro da Contabilidade.
+      </p>
+      <div className="grid sm:grid-cols-2 gap-3 mb-6">
         {itens.map(([t, d]) => (
           <ConceptCard key={t} titulo={t}>{d}</ConceptCard>
         ))}
+      </div>
+      <div className="flex flex-wrap gap-4">
+        <SeloFechamento ok rotulo="Balancete" formula="D = C" />
+        <SeloFechamento ok rotulo="Balanço" formula="A = P+PL" />
       </div>
     </div>
   );
@@ -3349,7 +3679,8 @@ function ManualFaq() {
     ["Minha turma não aparece na lista ao me cadastrar", "Só é possível vincular um usuário a uma turma já cadastrada. Peça a um Mestre ou Professor para cadastrá-la no módulo Turmas antes de você se registrar."],
     ["Posso usar no celular?", 'Sim, o sistema se adapta a telas pequenas. Toque no botão "☰ Menu" para abrir a navegação lateral.'],
     ["Preciso estar conectado à internet?", "Sim — como os dados agora ficam salvos na nuvem, é necessário estar conectado para lançar, consultar ou ver relatórios atualizados."],
-    ["Posso praticar em mais de uma empresa?", "Sim. Cadastre quantas empresas quiser no módulo Empresas — cada uma tem seu próprio Livro Diário e relatórios, totalmente separados."],
+    ["Posso praticar em mais de uma empresa?", "Cada aluno tem uma empresa vinculada pelo professor(a). Se você precisar de outra, peça para ele(a) cadastrar e vincular a você no módulo Empresas."],
+    ["Como o estoque é atualizado?", 'Não existe cadastro manual de estoque. Lance a compra ou venda normalmente em Lançamentos, usando uma conta marcada "Controla estoque" — o campo Quantidade que aparece alimenta o Controle de Estoque sozinho.'],
   ];
   return (
     <div>
@@ -3409,13 +3740,312 @@ function ManualGlossario() {
   );
 }
 
-function GestaoManualView() {
-  const [sub, setSub] = useState("inicio");
+// ============================================================================
+// MANUAL DO PROFESSOR — operacionalidade dos acessos de Mestre/Professor.
+// Visível só para quem não é Aluno (ver filtro em APRENDIZADO_ITENS e na Capa).
+// ============================================================================
+
+const MANUAL_PROF_SUBS = [
+  { id: "turmas", label: "Turmas" },
+  { id: "empresas", label: "Empresas" },
+  { id: "usuarios", label: "Usuários e Aprovações" },
+  { id: "plano", label: "Plano de Contas" },
+  { id: "sistema", label: "Auditoria e Backup" },
+];
+
+function ManualProfTurmas() {
   return (
     <div>
+      <h3 className="font-serif font-semibold text-ink text-lg mb-1">Gestão de Turmas</h3>
+      <p className="text-sm text-inkSoft mb-4">
+        A turma é o primeiro cadastro do sistema — sem ela, nenhum aluno consegue se registrar.
+      </p>
+      <TabelaIlustrada
+        legenda="Card de cada turma, com a contagem de usuários vinculados"
+        colunas={["Turma", "Usuários vinculados"]}
+        badgeColuna={0}
+        linhas={[
+          ["4741-N-1 - MÓDULO-1-CONTABILIDADE", "12 usuário(s)"],
+          ["4739-N-1 - MÓDULO-1-ADMINISTRAÇÃO FINANCEIRA", "0 usuário(s)"],
+        ]}
+      />
+      <Card className="mb-4">
+        <PassoManual n={1} titulo="Cadastrar uma turma">
+          Vá em <b>Turmas</b>, digite o nome (ex.: "3ª Contabilidade — Manhã") e clique em
+          "Adicionar". Faça isso antes de divulgar o link de cadastro aos alunos.
+        </PassoManual>
+        <PassoManual n={2} titulo="Renomear ou excluir">
+          Use os ícones de lápis (editar) e lixeira (excluir) em cada card. Uma turma com
+          usuários vinculados não pode ser excluída pelo caminho normal — o sistema avisa e
+          pede para mudar a turma desses usuários primeiro.
+        </PassoManual>
+        <PassoManual n={3} titulo='Zona de perigo: "Excluir e desvincular"'>
+          Só um usuário <b>Mestre</b> vê esse link (em vermelho) quando a turma já tem usuários
+          vinculados. Ele exclui a turma e desvincula todos os alunos dela de uma vez — sem
+          apagar as contas deles, só tira a turma. Pede confirmação digitando o nome exato da
+          turma, por ser uma ação irreversível.
+        </PassoManual>
+      </Card>
+      <div className="text-xs text-inkSoft">
+        Alunos só enxergam a própria turma nesta tela; Mestre e Professor veem todas.
+      </div>
+    </div>
+  );
+}
+
+function ManualProfEmpresas() {
+  return (
+    <div>
+      <h3 className="font-serif font-semibold text-ink text-lg mb-1">Gestão de Empresas</h3>
+      <p className="text-sm text-inkSoft mb-4">
+        Cada empresa fictícia é vinculada a <b>um aluno específico</b> — é essa empresa que ele vai
+        usar em Lançamentos, Saldos, Relatórios etc.
+      </p>
+      <TabelaIlustrada
+        legenda="Campos do formulário de cadastro de empresa"
+        colunas={["Campo", "Preenchimento"]}
+        badgeColuna={0}
+        linhas={[
+          ["Nome da empresa", "Ex.: Comércio Exemplo Ltda"],
+          ["CNPJ (fictício)", "Botão \"Gerar\" cria um CNPJ válido só para prática"],
+          ["Atividade", "Ex.: Comércio varejista"],
+          ["Aluno responsável", "Escolha na lista de alunos já aprovados"],
+        ]}
+      />
+      <Card className="mb-4">
+        <PassoManual n={1} titulo="Cadastrar a empresa">
+          Preencha nome, CNPJ (ou gere automaticamente) e atividade. O campo "Responsável" é
+          texto livre — não confundir com "Aluno responsável", que é o vínculo de verdade.
+        </PassoManual>
+        <PassoManual n={2} titulo="Vincular ao aluno">
+          No campo <b>"Aluno responsável"</b>, escolha o aluno na lista. Só quem já se
+          cadastrou e foi aprovado aparece aqui. Sem esse vínculo, a empresa fica
+          "— ainda não vinculada —" e nenhum aluno consegue selecioná-la como empresa ativa.
+        </PassoManual>
+        <PassoManual n={3} titulo="Editar ou trocar o aluno vinculado">
+          Clique no lápis a qualquer momento para reatribuir a empresa a outro aluno, corrigir o
+          CNPJ ou a atividade.
+        </PassoManual>
+      </Card>
+      <div className="text-xs text-inkSoft">
+        Alunos só veem a própria empresa nesta tela e no seletor "Empresa ativa"; Mestre e
+        Professor veem todas, com o nome do aluno vinculado em cada card.
+      </div>
+    </div>
+  );
+}
+
+function ManualProfUsuarios() {
+  return (
+    <div>
+      <h3 className="font-serif font-semibold text-ink text-lg mb-1">Usuários e Aprovações</h3>
+      <p className="text-sm text-inkSoft mb-4">
+        Todo cadastro novo (Aluno ou Professor) entra como <b>pendente</b> e precisa de aprovação
+        antes de conseguir entrar no sistema.
+      </p>
+
+      <h4 className="font-semibold text-ink text-sm mb-1">Aprovações</h4>
+      <p className="text-sm text-inkSoft mb-3">
+        A aba "Aprovações" só aparece para quem tem a permissão correspondente, e mostra a fila de
+        cadastros pendentes.
+      </p>
+      <Card className="mb-4">
+        <PassoManual n={1} titulo="Aprovar">
+          Confere nome, e-mail e turma do cadastro, e clica em "Aprovar" — a conta passa a poder
+          fazer login imediatamente.
+        </PassoManual>
+        <PassoManual n={2} titulo="Rejeitar">
+          Exclui o cadastro pendente por completo (útil para cadastros duplicados ou por engano).
+        </PassoManual>
+      </Card>
+
+      <h4 className="font-semibold text-ink text-sm mb-1">Usuários</h4>
+      <p className="text-sm text-inkSoft mb-3">
+        Lista todas as contas já aprovadas, com tipo, turma e permissões de cada uma.
+      </p>
+      <Card className="mb-4">
+        <PassoManual n={1} titulo="Mudar o tipo (Aluno / Professor / Mestre)">
+          Escolha o novo tipo no seletor da linha do usuário. As permissões dele são
+          redefinidas automaticamente para o padrão do novo tipo. Não é possível rebaixar ou
+          excluir o único Mestre restante do sistema.
+        </PassoManual>
+        <PassoManual n={2} titulo="Mudar a turma">
+          Útil quando um aluno troca de turma no meio do curso.
+        </PassoManual>
+        <PassoManual n={3} titulo='Botão "Permissões"'>
+          Abre um painel com cada permissão individual (excluir lançamentos, excluir empresas,
+          excluir usuários, gerenciar turmas e empresas, restaurar backup, ver auditoria, aprovar
+          usuários) — dá para ligar ou desligar qualquer uma, além do padrão do tipo. Use para
+          casos especiais, como dar a um aluno de confiança a permissão de excluir os próprios
+          lançamentos errados.
+        </PassoManual>
+        <PassoManual n={4} titulo="Excluir">
+          Remove a conta por completo (só quem tem a permissão "Excluir usuários").
+        </PassoManual>
+      </Card>
+      <div className="text-xs text-inkSoft">
+        Permissões padrão por tipo — Mestre: todas ligadas. Professor: excluir lançamentos,
+        gerenciar turmas e empresas, ver auditoria. Aluno: nenhuma permissão extra por padrão.
+      </div>
+    </div>
+  );
+}
+
+function ManualProfPlano() {
+  return (
+    <div>
+      <h3 className="font-serif font-semibold text-ink text-lg mb-1">Plano de Contas — edição (só Mestre)</h3>
+      <p className="text-sm text-inkSoft mb-4">
+        Diferente do Aluno (que só consulta), um usuário <b>Mestre</b> pode incluir, editar e
+        excluir contas — com histórico de alterações registrado automaticamente.
+      </p>
+      <TabelaIlustrada
+        legenda="Campos do formulário de conta"
+        colunas={["Campo", "Observação"]}
+        badgeColuna={0}
+        linhas={[
+          ["Código", "Sugerido automaticamente pelo Grupo + Tipo — editável"],
+          ["Grupo / Tipo / Natureza", "Definem a classificação e a numeração"],
+          ["Recebe lançamentos?", "Só contas analíticas/subcontas devem marcar Sim"],
+          ["Controla estoque?", "Só contas físicas de mercadoria/produto"],
+        ]}
+      />
+      <Card className="mb-4">
+        <PassoManual n={1} titulo="Criar uma conta nova">
+          Clique em "Nova conta". Ao escolher Grupo e Tipo, o Código já vem sugerido seguindo a
+          sequência das contas existentes — pode aceitar ou digitar outro.
+        </PassoManual>
+        <PassoManual n={2} titulo="Editar">
+          O código não pode ser alterado numa conta já existente (evita quebrar lançamentos
+          antigos que já usam aquele código) — só nome, grupo, natureza etc.
+        </PassoManual>
+        <PassoManual n={3} titulo='Marcar "Controla estoque"'>
+          Habilite só nas contas físicas de mercadoria/produto (ex.: "Mercadorias para
+          Revenda"). Isso faz o campo Quantidade aparecer em Lançamentos para essa conta e
+          alimenta o Controle de Estoque (PEPS/UEPS/MP) automaticamente.
+        </PassoManual>
+        <PassoManual n={4} titulo="Excluir">
+          Avisa se a conta já foi usada em algum lançamento — os lançamentos antigos continuam
+          existindo, mas passam a exibir só o código, sem nome.
+        </PassoManual>
+        <PassoManual n={5} titulo="Histórico de alterações">
+          Aparece no fim da página: quem alterou o quê e quando, para todo o plano de contas.
+        </PassoManual>
+      </Card>
+    </div>
+  );
+}
+
+function ManualProfSistema() {
+  return (
+    <div>
+      <h3 className="font-serif font-semibold text-ink text-lg mb-1">Auditoria e Backup</h3>
+
+      <h4 className="font-semibold text-ink text-sm mb-1">Auditoria</h4>
+      <p className="text-sm text-inkSoft mb-3">
+        Todo cadastro, edição ou exclusão feito por qualquer usuário fica registrado
+        automaticamente — com data/hora, quem fez e o que foi feito. Não é possível apagar essa
+        lista pela interface.
+      </p>
+      <Card className="mb-4">
+        <PassoManual n={1} titulo="Filtrar o log">
+          Use os três seletores (usuário, tipo de registro, ação) para localizar uma alteração
+          específica.
+        </PassoManual>
+        <PassoManual n={2} titulo="Exportar em CSV">
+          Baixa o log completo para arquivar ou analisar no Excel.
+        </PassoManual>
+      </Card>
+      <div className="text-xs text-inkSoft mb-4">
+        Só aparece para quem tem a permissão "Ver auditoria" (Mestre e Professor, por padrão).
+      </div>
+
+      <h4 className="font-semibold text-ink text-sm mb-1">Backup</h4>
+      <p className="text-sm text-inkSoft mb-3">
+        Os dados já ficam salvos e sincronizados na nuvem automaticamente — este módulo serve
+        para arquivar um retrato completo do sistema, ou para recuperar de uma falha grave.
+      </p>
+      <Card>
+        <PassoManual n={1} titulo="Exportar backup completo">
+          Baixa um arquivo .json com turmas, empresas, usuários, lançamentos, saldos e o log de
+          auditoria de tudo — disponível para Mestre e Professor.
+        </PassoManual>
+        <PassoManual n={2} titulo="Restaurar backup">
+          <span className="text-red">
+            Atenção: restaurar substitui os dados de TODOS os usuários do sistema neste momento,
+            não só os seus.
+          </span>{" "}
+          Use apenas em emergências. Só quem tem a permissão "Restaurar backup" (Mestre, por
+          padrão) vê essa opção, e o sistema pede para digitar "RESTAURAR" antes de confirmar.
+        </PassoManual>
+      </Card>
+
+      <h4 className="font-semibold text-ink text-sm mt-4 mb-1">Relatórios → Comparativo entre Empresas</h4>
+      <p className="text-sm text-inkSoft">
+        Só Mestre e Professor veem essa aba dentro de Relatórios — uma tabela com todas as
+        empresas cadastradas, o aluno responsável de cada uma, quantidade de lançamentos, total do
+        Ativo e resultado do exercício. Útil para acompanhar a turma inteira de uma vez, sem
+        precisar entrar empresa por empresa.
+      </p>
+    </div>
+  );
+}
+
+// Link para os PDFs dos manuais — arquivos estáticos servidos pelo próprio
+// GitHub Pages (pasta public/manuais/ do projeto). BASE_URL respeita o
+// subcaminho de publicação do site automaticamente.
+function BotoesPDF({ arquivo, nome }) {
+  const url = `${import.meta.env.BASE_URL}manuais/${arquivo}`;
+  return (
+    <div className="flex flex-wrap gap-2 mb-4">
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-line text-sm text-ink hover:border-green hover:text-green transition-colors"
+      >
+        <ExternalLink size={15} /> Abrir PDF em nova aba
+      </a>
+      <a
+        href={url}
+        download={nome}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green text-white text-sm hover:opacity-90 transition-opacity"
+      >
+        <Download size={15} /> Baixar PDF
+      </a>
+    </div>
+  );
+}
+
+function GestaoManualProfessorView() {
+  const [sub, setSub] = useState("turmas");
+  return (
+    <div>
+      <h2 className="text-lg font-serif font-semibold text-ink mb-1">Manual do Professor</h2>
+      <p className="text-sm text-inkSoft mb-3">
+        Funcionalidade e operacionalidade dos acessos de Mestre/Professor — cadastro e gestão de
+        turmas, empresas, usuários, plano de contas, auditoria e backup.
+      </p>
+      <BotoesPDF arquivo="Manual_do_Professor.pdf" nome="Manual do Professor.pdf" />
+      <SubNav itens={MANUAL_PROF_SUBS} atual={sub} aoTrocar={setSub} />
+      {sub === "turmas" && <ManualProfTurmas />}
+      {sub === "empresas" && <ManualProfEmpresas />}
+      {sub === "usuarios" && <ManualProfUsuarios />}
+      {sub === "plano" && <ManualProfPlano />}
+      {sub === "sistema" && <ManualProfSistema />}
+    </div>
+  );
+}
+
+function GestaoManualView() {
+  const [sub, setSub] = useState("acesso");
+  return (
+    <div>
+      <h2 className="text-lg font-serif font-semibold text-ink mb-1">Manual do Aluno</h2>
+      <BotoesPDF arquivo="Manual_do_Aluno.pdf" nome="Manual do Aluno.pdf" />
       <SubNav itens={MANUAL_SUBS} atual={sub} aoTrocar={setSub} />
-      {sub === "inicio" && <ManualInicio />}
-      {sub === "lancar" && <ManualLancar />}
+      {sub === "acesso" && <ManualAcesso />}
+      {sub === "ciclo" && <ManualCicloContabil />}
       {sub === "relatoriosdica" && <ManualRelatorios />}
       {sub === "faq" && <ManualFaq />}
       {sub === "glossario" && <ManualGlossario />}
@@ -3563,7 +4193,7 @@ const RELAT_SUBS = [
 // montar o Comparativo e o Backup, que precisam de todas as empresas de uma
 // vez — não só da empresa ativa selecionada no momento).
 async function buscarDadosEmpresa(empresaId) {
-  let lancamentos = [], saldos = {}, estoqueMovs = [];
+  let lancamentos = [], saldos = {};
   try {
     const r = await window.storage.get(`lancamentos_${empresaId}`, true);
     lancamentos = r ? JSON.parse(r.value) : [];
@@ -3572,11 +4202,7 @@ async function buscarDadosEmpresa(empresaId) {
     const r = await window.storage.get(`saldos_${empresaId}`, true);
     saldos = r ? JSON.parse(r.value) : {};
   } catch {}
-  try {
-    const r = await window.storage.get(`estoque_${empresaId}`, true);
-    estoqueMovs = r ? JSON.parse(r.value) : [];
-  } catch {}
-  return { lancamentos, saldos, estoqueMovs };
+  return { lancamentos, saldos };
 }
 
 function RelatorioResumo({ empresa, lancamentos, saldos, leaves, contaByCode }) {
@@ -3796,11 +4422,9 @@ function GestaoBackupView({ perfil, turmas, empresas, usuarios, auditoria, regis
       );
       const lancamentosPorEmpresa = {};
       const saldosPorEmpresa = {};
-      const estoquePorEmpresa = {};
       porEmpresa.forEach((e) => {
         lancamentosPorEmpresa[e.id] = e.lancamentos;
         saldosPorEmpresa[e.id] = e.saldos;
-        estoquePorEmpresa[e.id] = e.estoqueMovs;
       });
       const backup = {
         tipo: "backup-sistema-contabil-react",
@@ -3811,7 +4435,6 @@ function GestaoBackupView({ perfil, turmas, empresas, usuarios, auditoria, regis
         usuarios: usuarios || [],
         lancamentosPorEmpresa,
         saldosPorEmpresa,
-        estoquePorEmpresa,
         auditoria: auditoria || [],
       };
       const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json;charset=utf-8;" });
@@ -3875,9 +4498,6 @@ function GestaoBackupView({ perfil, turmas, empresas, usuarios, auditoria, regis
         }
         for (const empId of Object.keys(data.saldosPorEmpresa || {})) {
           await window.storage.set(`saldos_${empId}`, JSON.stringify(data.saldosPorEmpresa[empId] || {}), true);
-        }
-        for (const empId of Object.keys(data.estoquePorEmpresa || {})) {
-          await window.storage.set(`estoque_${empId}`, JSON.stringify(data.estoquePorEmpresa[empId] || []), true);
         }
         await registrarAuditoria("editar", "sistema", `Restaurou um backup (${resumo})`);
         alert("Backup restaurado com sucesso. A página vai recarregar para atualizar todos os dados.");
@@ -4239,10 +4859,6 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
     []
   );
 
-  // Movimentações de estoque (Controle de Estoque, dentro do Ciclo Contábil) —
-  // por empresa ativa, igual Saldos e Lançamentos.
-  const [estoqueMovs, salvarEstoqueMovs] = useSharedList(empresaAtivaId ? `estoque_${empresaAtivaId}` : null, []);
-
   const moduloFuturo = MODULOS_FUTUROS.find((m) => m.id === aba);
 
   const contagens = {
@@ -4387,17 +5003,12 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
       {aba === "estoque" && (
         <>
           <SeletorEmpresaAtiva empresas={empresasVisiveis} empresaAtivaId={empresaAtivaId} setEmpresaAtivaId={setEmpresaAtivaId} />
-          <IntroEstoque
-            perfil={perfil}
-            empresa={empresaAtiva}
-            estoqueMovs={estoqueMovs}
-            salvarEstoqueMovs={salvarEstoqueMovs}
-            registrarAuditoria={registrarAuditoria}
-          />
+          <GestaoEstoqueView empresa={empresaAtiva} lancamentos={lancamentos} contaByCode={contaByCodeAtivo} />
         </>
       )}
       {aba === "introducao" && <GestaoIntroducaoView contas={contasAtivas} />}
       {aba === "manual" && <GestaoManualView />}
+      {aba === "manual-professor" && perfil?.tipo !== "Aluno" && <GestaoManualProfessorView />}
       {aba === "auditoria" && <GestaoAuditoriaView perfil={perfil} auditoria={auditoria} />}
       {aba === "backup" && (
         <GestaoBackupView
