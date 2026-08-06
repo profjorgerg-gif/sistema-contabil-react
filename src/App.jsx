@@ -6,7 +6,7 @@ import {
   Landmark, GraduationCap, Layers, Package, ChevronLeft, Download, ExternalLink,
 } from "lucide-react";
 import {
-  observarSessao, cadastrar, entrar, sair, recuperarSenha, traduzErroAuth, CODIGO_MESTRE,
+  observarSessao, cadastrar, entrar, entrarComGoogle, sair, recuperarSenha, traduzErroAuth, CODIGO_MESTRE,
 } from "./firebaseAuth";
 import { LOGO_CEDUP } from "./logo";
 import { CONTAS, GRUPOS } from "./contas";
@@ -480,11 +480,25 @@ function CampoSenha({ value, onChange, placeholder }) {
 // TELAS DE AUTENTICAÇÃO
 // ============================================================================
 
+// Ícone oficial "G" do Google, nas 4 cores — uso padrão em botões de
+// "Entrar com Google" (segue as diretrizes de marca do próprio Google).
+function GoogleIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+      <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84c-.21 1.13-.84 2.09-1.8 2.73v2.27h2.92c1.71-1.57 2.68-3.88 2.68-6.64z" />
+      <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.27c-.81.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.71H.96v2.34C2.44 15.98 5.48 18 9 18z" />
+      <path fill="#FBBC05" d="M3.97 10.7c-.18-.54-.28-1.12-.28-1.7s.1-1.16.28-1.7V4.96H.96A8.996 8.996 0 000 9c0 1.45.35 2.83.96 4.04l3.01-2.34z" />
+      <path fill="#EA4335" d="M9 3.58c1.32 0 2.51.45 3.44 1.35l2.59-2.59C13.46.89 11.43 0 9 0 5.48 0 2.44 2.02.96 4.96l3.01 2.34C4.68 5.16 6.66 3.58 9 3.58z" />
+    </svg>
+  );
+}
+
 function TelaLogin({ onIrParaCadastro }) {
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(false);
+  const [carregandoGoogle, setCarregandoGoogle] = useState(false);
   const [mensagemRecuperar, setMensagemRecuperar] = useState("");
 
   const handleSubmit = async (e) => {
@@ -497,6 +511,20 @@ function TelaLogin({ onIrParaCadastro }) {
       setErro(traduzErroAuth(err.code));
     } finally {
       setCarregando(false);
+    }
+  };
+
+  const handleGoogle = async () => {
+    setErro("");
+    setCarregandoGoogle(true);
+    try {
+      await entrarComGoogle();
+    } catch (err) {
+      if (err.code !== "auth/popup-closed-by-user" && err.code !== "auth/cancelled-popup-request") {
+        setErro(traduzErroAuth(err.code));
+      }
+    } finally {
+      setCarregandoGoogle(false);
     }
   };
 
@@ -546,6 +574,20 @@ function TelaLogin({ onIrParaCadastro }) {
             className="text-xs text-inkSoft hover:text-ink underline block mt-3 mx-auto"
           >
             Esqueci minha senha
+          </button>
+          <div className="flex items-center gap-3 my-4">
+            <div className="flex-1 h-px bg-line" />
+            <span className="text-xs text-inkSoft">ou</span>
+            <div className="flex-1 h-px bg-line" />
+          </div>
+          <button
+            type="button"
+            onClick={handleGoogle}
+            disabled={carregandoGoogle}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-line bg-white text-ink text-sm font-semibold hover:bg-paper transition-colors disabled:opacity-60"
+          >
+            <GoogleIcon />
+            {carregandoGoogle ? "Entrando…" : "Entrar com Google"}
           </button>
         </Card>
         <button
@@ -660,6 +702,98 @@ function TelaCadastro({ turmas, onIrParaLogin }) {
         </Card>
         <button onClick={onIrParaLogin} className="text-sm text-ink font-semibold underline block mt-4 mx-auto">
           Já tenho conta — entrar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Aparece só na primeira vez que uma conta Google entra — o Google só fornece
+// nome e e-mail, então faltam Tipo/Turma/Código de Mestre para criar o perfil
+// no Firestore (mesmos campos do cadastro por e-mail/senha, sem pedir senha).
+function TelaCompletarCadastroGoogle({ user, turmas, onConcluido }) {
+  const [papel, setPapel] = useState("Aluno");
+  const [turmaId, setTurmaId] = useState("");
+  const [codigoMestre, setCodigoMestre] = useState("");
+  const [erro, setErro] = useState("");
+  const [carregando, setCarregando] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setErro("");
+    if (papel === "Aluno" && !turmaId) {
+      setErro("Selecione sua turma. Se ela ainda não aparece na lista, peça ao professor(a) para cadastrá-la antes.");
+      return;
+    }
+    setCarregando(true);
+    try {
+      const virouMestre = codigoMestre.trim() && codigoMestre.trim() === CODIGO_MESTRE;
+      const tipoFinal = virouMestre ? "Mestre" : papel;
+      const perfil = {
+        uid: user.uid,
+        nome: user.displayName || user.email,
+        email: user.email,
+        tipo: tipoFinal,
+        turmaId: turmaId || null,
+        permissoes: defaultPermissoes(tipoFinal),
+        aprovado: virouMestre,
+        criadoEm: Date.now(),
+      };
+      await salvarUsuario(perfil);
+      onConcluido();
+    } catch {
+      setErro("Não foi possível concluir o cadastro. Tente novamente.");
+    } finally {
+      setCarregando(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-paper px-4 py-8">
+      <div className="w-full max-w-sm">
+        <div className="text-center mb-6">
+          <img src={LOGO_CEDUP} alt="CEDUP Hermann Hering" className="w-16 h-16 mx-auto mb-3 rounded-lg" />
+          <h1 className="text-xl font-serif font-semibold text-ink">Complete seu cadastro</h1>
+          <p className="text-xs text-inkSoft mt-1">
+            Entrando como {user.displayName || user.email} — só falta isso para começar.
+          </p>
+        </div>
+        <Card>
+          <form onSubmit={handleSubmit}>
+            <Field label="Você é">
+              <SelectInput value={papel} onChange={(e) => setPapel(e.target.value)}>
+                <option value="Aluno">Aluno</option>
+                <option value="Professor">Professor</option>
+              </SelectInput>
+            </Field>
+            <Field
+              label="Turma"
+              hint={
+                papel === "Aluno"
+                  ? "Obrigatório para alunos — só é possível escolher uma turma já cadastrada pelo professor."
+                  : "Opcional para professores — pode ser definida depois."
+              }
+            >
+              <SelectInput value={turmaId} onChange={(e) => setTurmaId(e.target.value)}>
+                <option value="">— Selecione —</option>
+                {(turmas || []).map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.nome}
+                  </option>
+                ))}
+              </SelectInput>
+            </Field>
+            <Field label="Código de Mestre (opcional)" hint="Só preencha se um Usuário Mestre te passou este código.">
+              <TxtInput value={codigoMestre} onChange={(e) => setCodigoMestre(e.target.value)} />
+            </Field>
+            {erro && <div className="text-sm text-red mb-3">{erro}</div>}
+            <Botao type="submit" disabled={carregando} className="w-full justify-center">
+              {carregando ? "Concluindo…" : "Concluir cadastro"}
+            </Botao>
+          </form>
+        </Card>
+        <button onClick={sair} className="text-sm text-inkSoft underline block mt-4 mx-auto">
+          Cancelar e sair
         </button>
       </div>
     </div>
@@ -5048,7 +5182,13 @@ export default function App() {
 
   if (perfil === undefined) return <LoadingScreen texto="Carregando seu perfil…" />;
 
-  if (!perfil) return <LoadingScreen texto="Preparando sua conta…" />;
+  if (perfil === null) {
+    const viaGoogle = user.providerData?.some((p) => p.providerId === "google.com");
+    if (viaGoogle) {
+      return <TelaCompletarCadastroGoogle user={user} turmas={turmas} onConcluido={recarregarPerfil} />;
+    }
+    return <LoadingScreen texto="Preparando sua conta…" />;
+  }
 
   if (!perfil.aprovado) return <TelaAguardandoAprovacao perfil={perfil} />;
 
