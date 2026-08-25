@@ -4,6 +4,7 @@ import {
   ClipboardList, FileBarChart, ScrollText, History, Save, Eye, EyeOff,
   Crown, UserCheck, UserX, Pencil, Trash2, Plus, ShieldCheck, Wallet,
   Landmark, GraduationCap, Layers, Package, ChevronLeft, Download, ExternalLink,
+  LifeBuoy, Printer, Upload,
 } from "lucide-react";
 import {
   observarSessao, entrarComGoogle, sair, traduzErroAuth, CODIGO_MESTRE,
@@ -79,6 +80,12 @@ const APRENDIZADO_ITENS = [
   { id: "introducao", label: "Introdução à Contabilidade", icon: GraduationCap },
   { id: "manual", label: "Manual do Aluno", icon: BookOpen },
   { id: "manual-professor", label: "Manual do Professor", icon: ShieldCheck },
+];
+
+// Itens visíveis para todo mundo (Aluno, Professor, Mestre), fora do ciclo
+// contábil e da gestão administrativa.
+const OUTROS_ITENS = [
+  { id: "suporte", label: "Suporte", icon: LifeBuoy },
 ];
 
 // ============================================================================
@@ -434,6 +441,7 @@ function Pill({ children, tone = "green" }) {
     green: "bg-green/10 text-green border-green/30",
     gold: "bg-gold/10 text-gold border-gold/30",
     red: "bg-red/10 text-red border-red/30",
+    default: "bg-inkSoft/10 text-inkSoft border-inkSoft/30",
   };
   return (
     <span className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full border ${tons[tone]}`}>
@@ -938,6 +946,19 @@ function Layout({ perfil, aba, setAba, podeVoltar, aoVoltar, children }) {
             </button>
           )}
 
+          <div className="px-5 pt-4 pb-1 text-[11px] uppercase tracking-wide text-white/40">Outros</div>
+          {OUTROS_ITENS.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => irPara(item.id)}
+              className={`w-full flex items-center gap-3 px-5 py-2.5 text-sm text-left hover:bg-white/10 ${
+                aba === item.id ? "bg-white/10 text-gold font-semibold" : "text-white/85"
+              }`}
+            >
+              <item.icon size={17} /> {item.label}
+            </button>
+          ))}
+
           {MODULOS_FUTUROS.length > 0 && (
             <div className="px-5 pt-4 pb-1 text-[11px] uppercase tracking-wide text-white/40">
               Módulos (próximas fases)
@@ -1069,6 +1090,48 @@ function ModuloEmBreve({ modulo }) {
 // GESTÃO — TURMAS
 // ============================================================================
 
+// Extrai o texto de um PDF no navegador (via pdf.js, carregado sob demanda de
+// um CDN — não precisa instalar nada no projeto) e tenta reconhecer pares
+// "Nome + Matrícula", uma linha por aluno. Sempre mostra uma prévia editável
+// antes de importar de verdade, porque o reconhecimento é uma estimativa —
+// depende muito do formato exato do PDF exportado pela escola.
+async function extrairTextoPdf(arquivo) {
+  const pdfjsLib = await import("https://esm.sh/pdfjs-dist@4.0.379/build/pdf.mjs");
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://esm.sh/pdfjs-dist@4.0.379/build/pdf.worker.mjs";
+  const buf = await arquivo.arrayBuffer();
+  const doc = await pdfjsLib.getDocument({ data: buf }).promise;
+  let texto = "";
+  for (let i = 1; i <= doc.numPages; i++) {
+    const pagina = await doc.getPage(i);
+    const conteudo = await pagina.getTextContent();
+    texto += conteudo.items.map((it) => it.str).join(" ") + "\n";
+  }
+  return texto;
+}
+
+function parsearAlunosDoTexto(texto) {
+  const linhas = texto.split("\n").map((l) => l.trim()).filter(Boolean);
+  const regexMatricula = /\b(\d{4,})\b/;
+  const resultado = [];
+  const vistos = new Set();
+  for (const linha of linhas) {
+    const m = linha.match(regexMatricula);
+    if (!m) continue;
+    const matricula = m[1];
+    if (vistos.has(matricula)) continue;
+    const nome = linha
+      .replace(m[0], "")
+      .replace(/[-–—:.]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (nome.length >= 3 && /[A-Za-zÀ-ÿ]/.test(nome)) {
+      resultado.push({ nome, matricula });
+      vistos.add(matricula);
+    }
+  }
+  return resultado;
+}
+
 function GestaoTurmasView({ perfil, turmas, salvarTurmas, recarregarTurmas, usuarios, recarregarUsuarios, registrarAuditoria }) {
   const [novoNome, setNovoNome] = useState("");
   const [editandoId, setEditandoId] = useState(null);
@@ -1076,6 +1139,9 @@ function GestaoTurmasView({ perfil, turmas, salvarTurmas, recarregarTurmas, usua
   const [turmaExpandida, setTurmaExpandida] = useState(null);
   const [novoAlunoNome, setNovoAlunoNome] = useState("");
   const [novoAlunoMatricula, setNovoAlunoMatricula] = useState("");
+  const [importando, setImportando] = useState(false);
+  const [erroImportacao, setErroImportacao] = useState("");
+  const [preVisualizacao, setPreVisualizacao] = useState(null); // { turmaId, alunos: [{nome, matricula}] }
   const podeGerenciar = !!perfil?.permissoes?.gerenciarTurmas;
   const souAluno = perfil?.tipo === "Aluno";
   const souMestre = perfil?.tipo === "Mestre";
@@ -1095,6 +1161,56 @@ function GestaoTurmasView({ perfil, turmas, salvarTurmas, recarregarTurmas, usua
     await salvarTurmas((turmas || []).map((t) => (t.id === id ? { ...t, nome: nomeEdicao.trim() } : t)));
     await registrarAuditoria("editar", "turma", `Renomeou a turma "${antiga?.nome}" para "${nomeEdicao.trim()}"`);
     setEditandoId(null);
+  };
+
+  const handleArquivoPdf = async (turma, arquivo) => {
+    if (!arquivo) return;
+    setErroImportacao("");
+    setImportando(true);
+    try {
+      const texto = await extrairTextoPdf(arquivo);
+      const alunos = parsearAlunosDoTexto(texto);
+      if (alunos.length === 0) {
+        setErroImportacao(
+          'Não conseguimos identificar nome + matrícula automaticamente neste PDF. Confira se o arquivo tem uma linha por aluno (nome e matrícula juntos), ou cadastre manualmente acima.'
+        );
+        setImportando(false);
+        return;
+      }
+      setPreVisualizacao({ turmaId: turma.id, alunos });
+    } catch {
+      setErroImportacao("Não foi possível ler esse PDF. Tente novamente, ou cadastre os alunos manualmente.");
+    } finally {
+      setImportando(false);
+    }
+  };
+
+  const removerDaPrevia = (matricula) => {
+    setPreVisualizacao((p) => (p ? { ...p, alunos: p.alunos.filter((a) => a.matricula !== matricula) } : p));
+  };
+
+  const cancelarPrevia = () => {
+    setPreVisualizacao(null);
+    setErroImportacao("");
+  };
+
+  const confirmarImportacao = async () => {
+    const turma = (turmas || []).find((t) => t.id === preVisualizacao.turmaId);
+    if (!turma) return;
+    const matriculasExistentes = new Set((turmas || []).flatMap((t) => (t.alunosEsperados || []).map((a) => a.matricula)));
+    const novos = preVisualizacao.alunos.filter((a) => !matriculasExistentes.has(a.matricula));
+    const duplicados = preVisualizacao.alunos.length - novos.length;
+    await salvarTurmas(
+      (turmas || []).map((t) =>
+        t.id === turma.id ? { ...t, alunosEsperados: [...(t.alunosEsperados || []), ...novos] } : t
+      )
+    );
+    await registrarAuditoria(
+      "editar",
+      "turma",
+      `Importou ${novos.length} aluno(s) via PDF na turma "${turma.nome}"${duplicados ? ` (${duplicados} matrícula(s) já existente(s) ignorada(s))` : ""}`
+    );
+    setPreVisualizacao(null);
   };
 
   const adicionarAlunoEsperado = async (turma) => {
@@ -1270,6 +1386,54 @@ function GestaoTurmasView({ perfil, turmas, salvarTurmas, recarregarTurmas, usua
                       <Plus size={16} /> Adicionar
                     </Botao>
                   </div>
+
+                  <label className="inline-flex items-center gap-2 text-sm text-green font-semibold cursor-pointer mb-3 hover:opacity-80">
+                    <Upload size={15} />
+                    {importando ? "Lendo PDF…" : "Importar lista (PDF)"}
+                    <input
+                      type="file"
+                      accept="application/pdf"
+                      className="hidden"
+                      disabled={importando}
+                      onChange={(e) => {
+                        const arquivo = e.target.files?.[0];
+                        e.target.value = "";
+                        if (arquivo) handleArquivoPdf(t, arquivo);
+                      }}
+                    />
+                  </label>
+                  {erroImportacao && (
+                    <div className="text-sm text-red bg-red/10 border border-red/30 rounded-lg p-3 mb-3">{erroImportacao}</div>
+                  )}
+
+                  {preVisualizacao && preVisualizacao.turmaId === t.id && (
+                    <Card className="mb-3 bg-paper">
+                      <div className="text-sm font-semibold text-ink mb-1">
+                        Pré-visualização — {preVisualizacao.alunos.length} aluno(s) encontrado(s)
+                      </div>
+                      <p className="text-xs text-inkSoft mb-2">
+                        Confira antes de importar — remova quem estiver errado. Matrículas repetidas ou já
+                        cadastradas em outra turma são ignoradas automaticamente.
+                      </p>
+                      <div className="space-y-1 max-h-60 overflow-y-auto mb-3">
+                        {preVisualizacao.alunos.map((a) => (
+                          <div key={a.matricula} className="flex items-center justify-between text-sm bg-white rounded-lg px-3 py-1.5">
+                            <span>
+                              {a.nome} <span className="text-inkSoft font-mono text-xs">— {a.matricula}</span>
+                            </span>
+                            <button onClick={() => removerDaPrevia(a.matricula)} className="text-red hover:opacity-70" title="Remover da lista">
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex gap-2">
+                        <Botao onClick={confirmarImportacao}>Importar {preVisualizacao.alunos.length} aluno(s)</Botao>
+                        <Botao variant="ghost" onClick={cancelarPrevia}>Cancelar</Botao>
+                      </div>
+                    </Card>
+                  )}
+
                   {(t.alunosEsperados || []).length === 0 ? (
                     <div className="text-sm text-inkSoft italic">Nenhum aluno esperado cadastrado ainda.</div>
                   ) : (
@@ -4760,6 +4924,192 @@ function GestaoBackupView({ perfil, turmas, empresas, usuarios, auditoria, regis
 }
 
 // ============================================================================
+// SUPORTE — chamados "Sistema" (para um Usuário Mestre) e "Suporte Pedagógico"
+// (para o Professor). Lista compartilhada (kv: "chamados"), com status
+// controlado por Mestre/Professor; Aluno só vê e abre os próprios chamados.
+// ============================================================================
+
+const STATUS_CHAMADO_OPCOES = ["Aberto", "Em análise", "Encaminhado para desenvolvimento", "Encerrado"];
+
+function PillStatusChamado({ status }) {
+  const tone = status === "Encerrado" ? "default" : status === "Encaminhado para desenvolvimento" ? "green" : "gold";
+  return <Pill tone={tone}>{status}</Pill>;
+}
+
+function GestaoSuporteView({ perfil, chamados, salvarChamados, registrarAuditoria }) {
+  const [aba, setAba] = useState("sistema"); // sistema | pedagogico
+  const [filtroStatus, setFiltroStatus] = useState("Todos");
+  const [mostrarForm, setMostrarForm] = useState(false);
+  const [assunto, setAssunto] = useState("");
+  const [descricao, setDescricao] = useState("");
+  const [erro, setErro] = useState("");
+
+  const souAluno = perfil?.tipo === "Aluno";
+  const podeGerenciarStatus = perfil?.tipo === "Mestre" || perfil?.tipo === "Professor";
+
+  const listaDaAba = (chamados || []).filter((c) => c.tipo === aba);
+  const listaVisivel = souAluno ? listaDaAba.filter((c) => c.autorUid === perfil.uid) : listaDaAba;
+  const listaFiltrada =
+    !souAluno && filtroStatus !== "Todos" ? listaVisivel.filter((c) => c.status === filtroStatus) : listaVisivel;
+  const ordenada = [...listaFiltrada].sort((a, b) => b.criadoEm - a.criadoEm);
+
+  const abrirChamado = async (e) => {
+    e.preventDefault();
+    if (!assunto.trim() || !descricao.trim()) {
+      setErro("Preencha o assunto e a descrição.");
+      return;
+    }
+    setErro("");
+    const novo = {
+      id: uid("chm"),
+      tipo: aba,
+      assunto: assunto.trim(),
+      descricao: descricao.trim(),
+      autorUid: perfil.uid,
+      autorNome: perfil.nome,
+      autorTipo: perfil.tipo,
+      status: "Aberto",
+      criadoEm: Date.now(),
+    };
+    await salvarChamados([...(chamados || []), novo]);
+    await registrarAuditoria(
+      "criar",
+      "sistema",
+      `Abriu um chamado de suporte (${aba === "sistema" ? "Sistema" : "Suporte Pedagógico"}): "${novo.assunto}"`
+    );
+    setAssunto("");
+    setDescricao("");
+    setMostrarForm(false);
+  };
+
+  const mudarStatus = async (chamado, novoStatus) => {
+    await salvarChamados((chamados || []).map((c) => (c.id === chamado.id ? { ...c, status: novoStatus } : c)));
+    await registrarAuditoria("editar", "sistema", `Alterou o status do chamado "${chamado.assunto}" para "${novoStatus}"`);
+  };
+
+  return (
+    <div>
+      <h2 className="text-lg font-serif font-semibold text-ink mb-1">Central de Suporte</h2>
+      <p className="text-sm text-inkSoft mb-4">
+        {aba === "sistema"
+          ? "Fale com um Usuário Mestre sobre dúvidas, problemas ou sugestões da plataforma."
+          : "Converse com o(a) professor(a) sobre dúvidas da matéria ou do seu trabalho na empresa."}
+      </p>
+
+      <div className="grid grid-cols-2 gap-2 mb-4 max-w-sm">
+        <button
+          type="button"
+          onClick={() => { setAba("sistema"); setMostrarForm(false); setFiltroStatus("Todos"); }}
+          className={
+            "px-3 py-2 rounded-lg text-sm font-semibold border transition-colors " +
+            (aba === "sistema" ? "bg-green text-white border-green" : "border-line text-inkSoft hover:text-ink")
+          }
+        >
+          Sistema
+        </button>
+        <button
+          type="button"
+          onClick={() => { setAba("pedagogico"); setMostrarForm(false); setFiltroStatus("Todos"); }}
+          className={
+            "px-3 py-2 rounded-lg text-sm font-semibold border transition-colors " +
+            (aba === "pedagogico" ? "bg-green text-white border-green" : "border-line text-inkSoft hover:text-ink")
+          }
+        >
+          Suporte Pedagógico
+        </button>
+      </div>
+
+      {!souAluno && (
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          {["Todos", ...STATUS_CHAMADO_OPCOES].map((s) => (
+            <button
+              key={s}
+              onClick={() => setFiltroStatus(s)}
+              className={
+                "px-3 py-1 rounded-full text-xs font-semibold border transition-colors " +
+                (filtroStatus === s ? "bg-green text-white border-green" : "border-line text-inkSoft hover:text-ink")
+              }
+            >
+              {s}
+            </button>
+          ))}
+          <div className="flex-1" />
+          <Botao variant="ghost" onClick={() => window.print()}>
+            <Printer size={16} /> Imprimir / Salvar PDF
+          </Botao>
+        </div>
+      )}
+
+      {!mostrarForm ? (
+        <Botao onClick={() => setMostrarForm(true)} className="mb-4">
+          <Plus size={16} /> Novo chamado
+        </Botao>
+      ) : (
+        <Card className="mb-4">
+          <h3 className="font-semibold text-ink text-sm mb-1">Novo chamado</h3>
+          <p className="text-xs text-inkSoft mb-3">
+            Sua mensagem vai para {aba === "sistema" ? "um Usuário Mestre" : "o(a) professor(a)"}.
+          </p>
+          <form onSubmit={abrirChamado}>
+            <Field label="Assunto">
+              <TxtInput value={assunto} onChange={(e) => setAssunto(e.target.value)} placeholder="Resuma em poucas palavras" />
+            </Field>
+            <Field label="Descrição">
+              <textarea
+                className="w-full border border-line rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green/30"
+                rows={4}
+                value={descricao}
+                onChange={(e) => setDescricao(e.target.value)}
+                placeholder="Descreva com o máximo de detalhes possível…"
+              />
+            </Field>
+            {erro && <div className="text-sm text-red mb-3">{erro}</div>}
+            <div className="flex gap-2">
+              <Botao type="submit">Abrir chamado</Botao>
+              <Botao type="button" variant="ghost" onClick={() => setMostrarForm(false)}>
+                Cancelar
+              </Botao>
+            </div>
+          </form>
+        </Card>
+      )}
+
+      <div className="space-y-2">
+        {ordenada.map((c) => (
+          <Card key={c.id}>
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+              <div>
+                <div className="font-semibold text-ink text-sm">{c.assunto}</div>
+                <div className="text-xs text-inkSoft">
+                  {c.autorNome} ({c.autorTipo}) · {fmtDateTime(c.criadoEm)}
+                </div>
+                <p className="text-sm text-inkSoft mt-1 whitespace-pre-wrap">{c.descricao}</p>
+              </div>
+              <div className="shrink-0">
+                {podeGerenciarStatus ? (
+                  <SelectInput value={c.status} onChange={(e) => mudarStatus(c, e.target.value)}>
+                    {STATUS_CHAMADO_OPCOES.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </SelectInput>
+                ) : (
+                  <PillStatusChamado status={c.status} />
+                )}
+              </div>
+            </div>
+          </Card>
+        ))}
+        {ordenada.length === 0 && (
+          <div className="text-sm text-inkSoft italic">
+            Nenhum chamado {filtroStatus !== "Todos" ? `com status "${filtroStatus}" ` : ""}por aqui ainda.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
 // GESTÃO — USUÁRIOS (e Aprovações)
 // ============================================================================
 
@@ -5034,6 +5384,7 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
   });
 
   const [auditoria, salvarAuditoria] = useSharedList("auditoria", []);
+  const [chamados, salvarChamados] = useSharedList("chamados", []);
   const registrarAuditoria = useCallback(
     async (acao, entidade, descricao) => {
       const entrada = {
@@ -5222,6 +5573,14 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
           empresas={empresas}
           usuarios={usuarios}
           auditoria={auditoria}
+          registrarAuditoria={registrarAuditoria}
+        />
+      )}
+      {aba === "suporte" && (
+        <GestaoSuporteView
+          perfil={perfil}
+          chamados={chamados}
+          salvarChamados={salvarChamados}
           registrarAuditoria={registrarAuditoria}
         />
       )}
