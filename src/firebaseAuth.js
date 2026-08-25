@@ -71,6 +71,12 @@ export function traduzErroAuth(code) {
     "auth/cancelled-popup-request": "Login com Google cancelado. Tente novamente.",
     "auth/account-exists-with-different-credential":
       "Já existe uma conta com este e-mail usando login por senha. Entre com e-mail e senha nesse caso.",
+    "auth/unauthorized-domain":
+      "Este endereço do site ainda não está autorizado no Firebase para login com Google. Avise um Usuário Mestre para adicionar o domínio em Authentication → Configurações → Domínios autorizados.",
+    "auth/operation-not-allowed":
+      "O login com Google ainda não está habilitado no Firebase. Avise um Usuário Mestre para ativar o provedor Google em Authentication → Método de login.",
   };
-  return mapa[code] || "Não foi possível concluir a operação. Tente novamente.";
+  // Inclui o código bruto do erro na mensagem genérica (só aparece para casos
+  // ainda não mapeados acima) — facilita diagnosticar sem precisar adivinhar.
+  return mapa[code] || `Não foi possível concluir a operação${code ? ` (${code})` : ""}. Tente novamente.`;
 }
