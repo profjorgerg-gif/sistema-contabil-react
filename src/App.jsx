@@ -80,7 +80,13 @@ const APRENDIZADO_ITENS = [
   { id: "introducao", label: "Introdução à Contabilidade", icon: GraduationCap },
   { id: "manual", label: "Manual do Aluno", icon: BookOpen },
   { id: "manual-professor", label: "Manual do Professor", icon: ShieldCheck },
+  { id: "manual-operacionalizacao", label: "Manual de Operacionalização", icon: Landmark },
+  { id: "checklist-dev", label: "Checklist de Desenvolvimento", icon: ClipboardList },
 ];
+
+// Itens do menu "Aprendizado" restritos só ao Administrador (Mestre) —
+// nunca aparecem para Aluno nem Professor.
+const ITENS_SO_MESTRE = ["manual-operacionalizacao", "checklist-dev"];
 
 // Itens visíveis para todo mundo (Aluno, Professor, Mestre), fora do ciclo
 // contábil e da gestão administrativa.
@@ -897,7 +903,11 @@ function Layout({ perfil, aba, setAba, podeVoltar, aoVoltar, children }) {
           )}
 
           <div className="px-5 pt-4 pb-1 text-[11px] uppercase tracking-wide text-white/40">Aprendizado</div>
-          {APRENDIZADO_ITENS.filter((item) => !(item.id === "manual-professor" && perfil?.tipo === "Aluno")).map((item) => (
+          {APRENDIZADO_ITENS.filter(
+            (item) =>
+              !(item.id === "manual-professor" && perfil?.tipo === "Aluno") &&
+              !(ITENS_SO_MESTRE.includes(item.id) && perfil?.tipo !== "Mestre")
+          ).map((item) => (
             <button
               key={item.id}
               onClick={() => irPara(item.id)}
@@ -1008,7 +1018,7 @@ function Layout({ perfil, aba, setAba, podeVoltar, aoVoltar, children }) {
 function Capa({ perfil, setAba, contagens }) {
   const souAluno = perfil?.tipo === "Aluno";
   const aprendizadoVisivel = souAluno
-    ? APRENDIZADO_ITENS.filter((item) => item.id !== "manual-professor")
+    ? APRENDIZADO_ITENS.filter((item) => item.id !== "manual-professor" && !ITENS_SO_MESTRE.includes(item.id))
     : APRENDIZADO_ITENS;
   const cardsModulos = souAluno ? [...aprendizadoVisivel, ...EMPRESA_ITENS] : GESTAO_ITENS;
 
@@ -4406,6 +4416,113 @@ function GestaoManualProfessorView() {
   );
 }
 
+// Documento técnico do Administrador — o conteúdo detalhado (fluxo de
+// publicação, estrutura de pastas, segurança de acesso) mora no PDF; aqui
+// fica um resumo rápido de orientação + os botões de abrir/baixar.
+function GestaoManualOperacionalizacaoView() {
+  const secoes = [
+    ["1. Operacionalização — Quem Faz o Quê", "Claude escreve o código → GitHub publica o site → Firebase guarda e sincroniza os dados."],
+    ["2. Estrutura de Pastas do Projeto", "src/ para código, public/manuais/ para os PDFs."],
+    ["3. Publicando Atualizações", "Caminho A (editar 1 arquivo pelo site) ou Caminho B (GitHub Desktop, para pastas/múltiplos arquivos)."],
+    ["4. Conferir a Publicação (Actions)", "Sempre confirme o ✓ verde antes de considerar a tarefa concluída."],
+    ["5. Login e Segurança de Acesso", "Habilitar Google no Firebase, autorizar o domínio, trocar a senha mestre."],
+    ["6. Central de Suporte — Visão do Administrador", "Ver e gerenciar status dos chamados Sistema e Suporte Pedagógico."],
+    ["7. Importação de Turmas via PDF", "Como funciona o reconhecimento automático de nome + matrícula."],
+    ["8. Cuidados Importantes", "OneDrive, upload de pastas, conferir caminho antes de comitar, repositório certo."],
+  ];
+  return (
+    <div>
+      <h2 className="text-lg font-serif font-semibold text-ink mb-1">Manual de Operacionalização do Sistema</h2>
+      <p className="text-sm text-inkSoft mb-3">
+        Documento específico para o Administrador (Mestre): orientações sobre utilização,
+        configuração, gerenciamento e operacionalização das funcionalidades do sistema.
+      </p>
+      <BotoesPDF arquivo="Manual_de_Operacionalizacao.pdf" nome="Manual de Operacionalização.pdf" />
+      <Card>
+        <div className="text-xs text-inkSoft uppercase tracking-wide mb-2">O que tem no PDF</div>
+        <div className="space-y-3">
+          {secoes.map(([t, d]) => (
+            <div key={t}>
+              <div className="font-semibold text-ink text-sm">{t}</div>
+              <div className="text-sm text-inkSoft">{d}</div>
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// Checklist "vivo" do projeto — visão rápida em tela, com o PDF completo
+// (prioridade × complexidade, ordem recomendada) disponível para consulta e
+// arquivamento. Atualize pedindo ao Claude sempre que algo mudar de status.
+function GestaoChecklistDevView() {
+  const concluidos = [
+    "Fases 1 a 5 completas (ciclo contábil, turmas, empresas, usuários, auditoria, relatórios, backup)",
+    "Plano de Contas editável com histórico",
+    "Controle de Estoque automático via Lançamentos",
+    "Manual do Aluno e Manual do Professor no sistema",
+    "Login com Google (Aluno e Professor)",
+    "Matrícula do Aluno vinculada à turma",
+    "Senha mestre a cada entrada",
+    "Central de Suporte (Sistema e Suporte Pedagógico)",
+    "Importação de turmas via PDF",
+    "Manual de Operacionalização do Sistema",
+  ];
+  const pendentesTop5 = [
+    ["Publicar PDFs atualizados em public/manuais/", "Alta", "Baixa"],
+    ["Confirmar login com Google em produção", "Alta", "Baixa"],
+    ["Testar Backup — Exportar e Restaurar", "Alta", "Baixa"],
+    ["Testar fluxo completo de matrícula com aluno real", "Alta", "Baixa"],
+    ["Testar zona de perigo (excluir turma em cascata)", "Média", "Baixa"],
+  ];
+  const corPrioridade = { Alta: "text-red", Média: "text-gold", Baixa: "text-green" };
+
+  return (
+    <div>
+      <h2 className="text-lg font-serif font-semibold text-ink mb-1">Checklist de Desenvolvimento e Implementação</h2>
+      <p className="text-sm text-inkSoft mb-3">
+        Concluído, em desenvolvimento e pendências — com prioridade, complexidade e ordem
+        recomendada. Atualizado continuamente; a versão completa está sempre no PDF.
+      </p>
+      <BotoesPDF arquivo="Checklist_Desenvolvimento.pdf" nome="Checklist de Desenvolvimento.pdf" />
+
+      <div className="grid sm:grid-cols-2 gap-4">
+        <Card>
+          <div className="text-xs text-inkSoft uppercase tracking-wide mb-2">✓ Concluído (resumo)</div>
+          <ul className="space-y-1.5 text-sm text-ink">
+            {concluidos.map((c) => (
+              <li key={c} className="flex gap-2">
+                <span className="text-green shrink-0">✓</span> {c}
+              </li>
+            ))}
+          </ul>
+        </Card>
+        <Card>
+          <div className="text-xs text-inkSoft uppercase tracking-wide mb-2">Próximos 5 (por ordem recomendada)</div>
+          <ol className="space-y-2 text-sm">
+            {pendentesTop5.map(([item, prioridade, complexidade], i) => (
+              <li key={item}>
+                <div className="text-ink">
+                  <b>{i + 1}.</b> {item}
+                </div>
+                <div className="text-xs text-inkSoft">
+                  Prioridade: <span className={`font-semibold ${corPrioridade[prioridade]}`}>{prioridade}</span> ·
+                  {" "}Complexidade: <b>{complexidade}</b>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </Card>
+      </div>
+      <div className="text-xs text-inkSoft mt-3">
+        Lista completa (todas as pendências, seção "Em desenvolvimento" e ordem recomendada
+        inteira) disponível no PDF acima.
+      </div>
+    </div>
+  );
+}
+
 function GestaoManualView() {
   const [sub, setSub] = useState("acesso");
   return (
@@ -5565,6 +5682,8 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
       {aba === "introducao" && <GestaoIntroducaoView contas={contasAtivas} />}
       {aba === "manual" && <GestaoManualView />}
       {aba === "manual-professor" && perfil?.tipo !== "Aluno" && <GestaoManualProfessorView />}
+      {aba === "manual-operacionalizacao" && perfil?.tipo === "Mestre" && <GestaoManualOperacionalizacaoView />}
+      {aba === "checklist-dev" && perfil?.tipo === "Mestre" && <GestaoChecklistDevView />}
       {aba === "auditoria" && <GestaoAuditoriaView perfil={perfil} auditoria={auditoria} />}
       {aba === "backup" && (
         <GestaoBackupView
