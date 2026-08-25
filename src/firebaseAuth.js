@@ -11,13 +11,17 @@ import {
 import { auth } from "./firebaseConfig";
 
 // ============================================================================
-// Código de Mestre: quem se cadastra digitando este código vira Usuário
-// Mestre automaticamente, com aprovação automática (sem esperar outro Mestre
-// aprovar). Troque este valor periodicamente e nunca compartilhe por
-// texto/grupo aberto — o repositório no GitHub é público (ver Seção 8 do
-// manual de operacionalização).
+// Senha/Código de Mestre: usado em dois momentos —
+// 1) No primeiro login (Google) de um Professor(a), se informado, o perfil já
+//    nasce como Mestre, aprovado automaticamente.
+// 2) A CADA entrada de um usuário já cadastrado como Mestre, essa senha é
+//    pedida de novo (gate de acesso administrativo — ver TelaSenhaMestre em
+//    App.jsx), nunca fica salva entre sessões.
+// Troque este valor periodicamente e nunca compartilhe por texto/grupo aberto
+// — o repositório no GitHub é público (ver Seção 8 do manual de
+// operacionalização).
 // ============================================================================
-export const CODIGO_MESTRE = "CEDUP-TGVQ-XJ66-DMY9";
+export const CODIGO_MESTRE = "623251@_@prof";
 
 export function observarSessao(callback) {
   return onAuthStateChanged(auth, callback);

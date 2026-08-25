@@ -6,7 +6,7 @@ import {
   Landmark, GraduationCap, Layers, Package, ChevronLeft, Download, ExternalLink,
 } from "lucide-react";
 import {
-  observarSessao, cadastrar, entrar, entrarComGoogle, sair, recuperarSenha, traduzErroAuth, CODIGO_MESTRE,
+  observarSessao, entrarComGoogle, sair, traduzErroAuth, CODIGO_MESTRE,
 } from "./firebaseAuth";
 import { LOGO_CEDUP } from "./logo";
 import { CONTAS, GRUPOS } from "./contas";
@@ -493,51 +493,26 @@ function GoogleIcon() {
   );
 }
 
-function TelaLogin({ onIrParaCadastro }) {
-  const [email, setEmail] = useState("");
-  const [senha, setSenha] = useState("");
+function TelaLogin() {
+  const [perfilTab, setPerfilTab] = useState("Aluno");
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(false);
-  const [carregandoGoogle, setCarregandoGoogle] = useState(false);
-  const [mensagemRecuperar, setMensagemRecuperar] = useState("");
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setErro("");
-    setCarregando(true);
-    try {
-      await entrar(email.trim(), senha);
-    } catch (err) {
-      setErro(traduzErroAuth(err.code));
-    } finally {
-      setCarregando(false);
-    }
-  };
 
   const handleGoogle = async () => {
     setErro("");
-    setCarregandoGoogle(true);
+    setCarregando(true);
     try {
+      // Guarda em sessionStorage (sobrevive ao popup do Google) qual perfil a
+      // pessoa pretende ter — usado depois, se for o primeiro login dela, para
+      // decidir entre a tela de Matrícula (Aluno) ou Código de Mestre (Professor).
+      sessionStorage.setItem("perfilPretendido", perfilTab);
       await entrarComGoogle();
     } catch (err) {
       if (err.code !== "auth/popup-closed-by-user" && err.code !== "auth/cancelled-popup-request") {
         setErro(traduzErroAuth(err.code));
       }
     } finally {
-      setCarregandoGoogle(false);
-    }
-  };
-
-  const handleRecuperar = async () => {
-    if (!email.trim()) {
-      setErro("Digite seu e-mail no campo acima antes de clicar em \"Esqueci minha senha\".");
-      return;
-    }
-    try {
-      await recuperarSenha(email.trim());
-      setMensagemRecuperar("Enviamos um link de redefinição de senha para o seu e-mail.");
-    } catch (err) {
-      setErro(traduzErroAuth(err.code));
+      setCarregando(false);
     }
   };
 
@@ -550,64 +525,57 @@ function TelaLogin({ onIrParaCadastro }) {
           <p className="text-xs text-inkSoft mt-1">CEDUP Hermann Hering · Curso Técnico em Contabilidade</p>
         </div>
         <Card>
-          <form onSubmit={handleSubmit}>
-            <Field label="E-mail">
-              <TxtInput
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="voce@exemplo.com"
-              />
-            </Field>
-            <Field label="Senha">
-              <CampoSenha value={senha} onChange={(e) => setSenha(e.target.value)} placeholder="••••••••" />
-            </Field>
-            {erro && <div className="text-sm text-red mb-3">{erro}</div>}
-            {mensagemRecuperar && <div className="text-sm text-green mb-3">{mensagemRecuperar}</div>}
-            <Botao type="submit" disabled={carregando} className="w-full justify-center">
-              {carregando ? "Entrando…" : "Entrar"}
-            </Botao>
-          </form>
-          <button
-            onClick={handleRecuperar}
-            className="text-xs text-inkSoft hover:text-ink underline block mt-3 mx-auto"
-          >
-            Esqueci minha senha
-          </button>
-          <div className="flex items-center gap-3 my-4">
-            <div className="flex-1 h-px bg-line" />
-            <span className="text-xs text-inkSoft">ou</span>
-            <div className="flex-1 h-px bg-line" />
+          <div className="text-xs text-inkSoft uppercase tracking-wide mb-2">Perfil de acesso</div>
+          <div className="grid grid-cols-2 gap-2 mb-5">
+            <button
+              type="button"
+              onClick={() => setPerfilTab("Aluno")}
+              className={
+                "px-3 py-2 rounded-lg text-sm font-semibold border transition-colors " +
+                (perfilTab === "Aluno" ? "bg-green text-white border-green" : "border-line text-inkSoft hover:text-ink")
+              }
+            >
+              Aluno(a)
+            </button>
+            <button
+              type="button"
+              onClick={() => setPerfilTab("Professor")}
+              className={
+                "px-3 py-2 rounded-lg text-sm font-semibold border transition-colors " +
+                (perfilTab === "Professor" ? "bg-green text-white border-green" : "border-line text-inkSoft hover:text-ink")
+              }
+            >
+              Professor(a)
+            </button>
           </div>
+          <p className="text-xs text-inkSoft mb-4">
+            {perfilTab === "Aluno"
+              ? "Depois de entrar com o Google, vamos pedir sua matrícula para vincular à turma certa."
+              : "Depois de entrar com o Google, se você tiver um Código de Mestre, vai poder informá-lo."}
+          </p>
+          {erro && <div className="text-sm text-red mb-3">{erro}</div>}
           <button
             type="button"
             onClick={handleGoogle}
-            disabled={carregandoGoogle}
+            disabled={carregando}
             className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-line bg-white text-ink text-sm font-semibold hover:bg-paper transition-colors disabled:opacity-60"
           >
             <GoogleIcon />
-            {carregandoGoogle ? "Entrando…" : "Entrar com Google"}
+            {carregando ? "Entrando…" : "Continuar com o Google"}
           </button>
         </Card>
-        <button
-          onClick={onIrParaCadastro}
-          className="text-sm text-ink font-semibold underline block mt-4 mx-auto"
-        >
-          Ainda não tenho conta — cadastrar
-        </button>
+        <p className="text-xs text-inkSoft text-center mt-4">
+          Autenticado via Firebase Authentication — sempre conta Google.
+        </p>
       </div>
     </div>
   );
 }
 
-function TelaCadastro({ turmas, onIrParaLogin }) {
-  const [nome, setNome] = useState("");
-  const [email, setEmail] = useState("");
-  const [senha, setSenha] = useState("");
-  const [confirmar, setConfirmar] = useState("");
-  const [papel, setPapel] = useState("Aluno");
-  const [turmaId, setTurmaId] = useState("");
+// Primeiro login de um Professor(a) via Google — ainda não existe perfil no
+// Firestore. Só pede o Código de Mestre (opcional); sem ele, vira Professor
+// pendente de aprovação por um Mestre.
+function TelaCompletarProfessor({ user, onConcluido }) {
   const [codigoMestre, setCodigoMestre] = useState("");
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(false);
@@ -615,131 +583,22 @@ function TelaCadastro({ turmas, onIrParaLogin }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErro("");
-    if (senha !== confirmar) {
-      setErro("As senhas não coincidem.");
-      return;
-    }
-    if (papel === "Aluno" && !turmaId) {
-      setErro("Selecione sua turma. Se ela ainda não aparece na lista, peça ao professor(a) para cadastrá-la antes.");
-      return;
-    }
     setCarregando(true);
     try {
       const virouMestre = codigoMestre.trim() && codigoMestre.trim() === CODIGO_MESTRE;
-      const tipoFinal = virouMestre ? "Mestre" : papel;
-      const user = await cadastrar(nome.trim(), email.trim(), senha);
-      const perfil = {
-        uid: user.uid,
-        nome: nome.trim(),
-        email: email.trim(),
-        tipo: tipoFinal,
-        turmaId: turmaId || null,
-        permissoes: defaultPermissoes(tipoFinal),
-        aprovado: virouMestre,
-        criadoEm: Date.now(),
-      };
-      await salvarUsuario(perfil);
-    } catch (err) {
-      setErro(traduzErroAuth(err.code));
-    } finally {
-      setCarregando(false);
-    }
-  };
-
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-paper px-4 py-8">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-6">
-          <img src={LOGO_CEDUP} alt="CEDUP Hermann Hering" className="w-16 h-16 mx-auto mb-3 rounded-lg" />
-          <h1 className="text-xl font-serif font-semibold text-ink">Criar conta</h1>
-          <p className="text-xs text-inkSoft mt-1">Sistema de Escrituração Contábil</p>
-        </div>
-        <Card>
-          <form onSubmit={handleSubmit}>
-            <Field label="Nome completo">
-              <TxtInput required value={nome} onChange={(e) => setNome(e.target.value)} />
-            </Field>
-            <Field label="E-mail">
-              <TxtInput type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-            </Field>
-            <Field label="Senha">
-              <CampoSenha value={senha} onChange={(e) => setSenha(e.target.value)} placeholder="mín. 6 caracteres" />
-            </Field>
-            <Field label="Confirmar senha">
-              <CampoSenha value={confirmar} onChange={(e) => setConfirmar(e.target.value)} />
-            </Field>
-            <Field label="Você é">
-              <SelectInput value={papel} onChange={(e) => setPapel(e.target.value)}>
-                <option value="Aluno">Aluno</option>
-                <option value="Professor">Professor</option>
-              </SelectInput>
-            </Field>
-            <Field
-              label="Turma"
-              hint={
-                papel === "Aluno"
-                  ? "Obrigatório para alunos — só é possível escolher uma turma já cadastrada pelo professor."
-                  : "Opcional para professores — pode ser definida depois."
-              }
-            >
-              <SelectInput value={turmaId} onChange={(e) => setTurmaId(e.target.value)}>
-                <option value="">— Selecione —</option>
-                {(turmas || []).map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.nome}
-                  </option>
-                ))}
-              </SelectInput>
-            </Field>
-            <Field label="Código de Mestre (opcional)" hint="Só preencha se um Usuário Mestre te passou este código.">
-              <TxtInput value={codigoMestre} onChange={(e) => setCodigoMestre(e.target.value)} />
-            </Field>
-            {erro && <div className="text-sm text-red mb-3">{erro}</div>}
-            <Botao type="submit" disabled={carregando} className="w-full justify-center">
-              {carregando ? "Criando conta…" : "Criar conta"}
-            </Botao>
-          </form>
-        </Card>
-        <button onClick={onIrParaLogin} className="text-sm text-ink font-semibold underline block mt-4 mx-auto">
-          Já tenho conta — entrar
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// Aparece só na primeira vez que uma conta Google entra — o Google só fornece
-// nome e e-mail, então faltam Tipo/Turma/Código de Mestre para criar o perfil
-// no Firestore (mesmos campos do cadastro por e-mail/senha, sem pedir senha).
-function TelaCompletarCadastroGoogle({ user, turmas, onConcluido }) {
-  const [papel, setPapel] = useState("Aluno");
-  const [turmaId, setTurmaId] = useState("");
-  const [codigoMestre, setCodigoMestre] = useState("");
-  const [erro, setErro] = useState("");
-  const [carregando, setCarregando] = useState(false);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setErro("");
-    if (papel === "Aluno" && !turmaId) {
-      setErro("Selecione sua turma. Se ela ainda não aparece na lista, peça ao professor(a) para cadastrá-la antes.");
-      return;
-    }
-    setCarregando(true);
-    try {
-      const virouMestre = codigoMestre.trim() && codigoMestre.trim() === CODIGO_MESTRE;
-      const tipoFinal = virouMestre ? "Mestre" : papel;
+      const tipoFinal = virouMestre ? "Mestre" : "Professor";
       const perfil = {
         uid: user.uid,
         nome: user.displayName || user.email,
         email: user.email,
         tipo: tipoFinal,
-        turmaId: turmaId || null,
+        turmaId: null,
         permissoes: defaultPermissoes(tipoFinal),
         aprovado: virouMestre,
         criadoEm: Date.now(),
       };
       await salvarUsuario(perfil);
+      sessionStorage.removeItem("perfilPretendido");
       onConcluido();
     } catch {
       setErro("Não foi possível concluir o cadastro. Tente novamente.");
@@ -755,34 +614,11 @@ function TelaCompletarCadastroGoogle({ user, turmas, onConcluido }) {
           <img src={LOGO_CEDUP} alt="CEDUP Hermann Hering" className="w-16 h-16 mx-auto mb-3 rounded-lg" />
           <h1 className="text-xl font-serif font-semibold text-ink">Complete seu cadastro</h1>
           <p className="text-xs text-inkSoft mt-1">
-            Entrando como {user.displayName || user.email} — só falta isso para começar.
+            Entrando como {user.displayName || user.email} — Professor(a).
           </p>
         </div>
         <Card>
           <form onSubmit={handleSubmit}>
-            <Field label="Você é">
-              <SelectInput value={papel} onChange={(e) => setPapel(e.target.value)}>
-                <option value="Aluno">Aluno</option>
-                <option value="Professor">Professor</option>
-              </SelectInput>
-            </Field>
-            <Field
-              label="Turma"
-              hint={
-                papel === "Aluno"
-                  ? "Obrigatório para alunos — só é possível escolher uma turma já cadastrada pelo professor."
-                  : "Opcional para professores — pode ser definida depois."
-              }
-            >
-              <SelectInput value={turmaId} onChange={(e) => setTurmaId(e.target.value)}>
-                <option value="">— Selecione —</option>
-                {(turmas || []).map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.nome}
-                  </option>
-                ))}
-              </SelectInput>
-            </Field>
             <Field label="Código de Mestre (opcional)" hint="Só preencha se um Usuário Mestre te passou este código.">
               <TxtInput value={codigoMestre} onChange={(e) => setCodigoMestre(e.target.value)} />
             </Field>
@@ -799,6 +635,158 @@ function TelaCompletarCadastroGoogle({ user, turmas, onConcluido }) {
     </div>
   );
 }
+
+// Primeiro login de um Aluno(a) via Google — pede a Matrícula e procura, em
+// todas as turmas, um registro de "aluno esperado" com essa matrícula
+// (cadastrado antes pelo professor — ver GestaoTurmasView). Se achar, o
+// cadastro já entra aprovado (o professor já vinculou/autorizou ao registrar
+// a matrícula). Se não achar, orienta a procurar o professor.
+function TelaCompletarAluno({ user, turmas, onConcluido }) {
+  const [matricula, setMatricula] = useState("");
+  const [erro, setErro] = useState("");
+  const [naoEncontrada, setNaoEncontrada] = useState(false);
+  const [carregando, setCarregando] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setErro("");
+    setNaoEncontrada(false);
+    const mat = matricula.trim();
+    if (!mat) {
+      setErro("Informe sua matrícula.");
+      return;
+    }
+    setCarregando(true);
+    try {
+      let turmaEncontrada = null;
+      let nomeEncontrado = null;
+      for (const t of turmas || []) {
+        const registro = (t.alunosEsperados || []).find((a) => a.matricula === mat);
+        if (registro) {
+          turmaEncontrada = t;
+          nomeEncontrado = registro.nome;
+          break;
+        }
+      }
+      if (!turmaEncontrada) {
+        setNaoEncontrada(true);
+        setCarregando(false);
+        return;
+      }
+      const perfil = {
+        uid: user.uid,
+        nome: nomeEncontrado || user.displayName || user.email,
+        email: user.email,
+        tipo: "Aluno",
+        matricula: mat,
+        turmaId: turmaEncontrada.id,
+        permissoes: defaultPermissoes("Aluno"),
+        aprovado: true,
+        criadoEm: Date.now(),
+      };
+      await salvarUsuario(perfil);
+      sessionStorage.removeItem("perfilPretendido");
+      onConcluido();
+    } catch {
+      setErro("Não foi possível concluir. Tente novamente.");
+    } finally {
+      setCarregando(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-paper px-4">
+      <div className="w-full max-w-sm">
+        <div className="text-center mb-6">
+          <img src={LOGO_CEDUP} alt="CEDUP Hermann Hering" className="w-16 h-16 mx-auto mb-3 rounded-lg" />
+          <h1 className="text-xl font-serif font-semibold text-ink">Olá, {user.displayName || user.email}!</h1>
+          <p className="text-xs text-inkSoft mt-1">Informe sua matrícula para entrar na sua turma.</p>
+        </div>
+        <Card>
+          <form onSubmit={handleSubmit}>
+            <Field label="Matrícula">
+              <TxtInput
+                required
+                value={matricula}
+                onChange={(e) => {
+                  setMatricula(e.target.value);
+                  setNaoEncontrada(false);
+                }}
+                placeholder="Ex.: 2024001"
+              />
+            </Field>
+            {erro && <div className="text-sm text-red mb-3">{erro}</div>}
+            {naoEncontrada && (
+              <div className="text-sm text-ink bg-gold/10 border border-gold/40 rounded-lg p-3 mb-3">
+                Não encontramos essa matrícula vinculada a nenhuma turma. Procure seu professor(a) e peça para
+                cadastrá-la antes de tentar entrar de novo.
+              </div>
+            )}
+            <Botao type="submit" disabled={carregando} className="w-full justify-center">
+              {carregando ? "Entrando…" : "Entrar"}
+            </Botao>
+          </form>
+        </Card>
+        <button onClick={sair} className="text-sm text-inkSoft underline block mt-4 mx-auto">
+          Cancelar e sair
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Router do primeiro login — decide entre a tela de Professor ou de Aluno
+// conforme o que a pessoa escolheu na TelaLogin (guardado em sessionStorage).
+function TelaCompletarCadastroGoogle({ user, turmas, onConcluido }) {
+  const perfilPretendido = sessionStorage.getItem("perfilPretendido") || "Aluno";
+  if (perfilPretendido === "Professor") {
+    return <TelaCompletarProfessor user={user} onConcluido={onConcluido} />;
+  }
+  return <TelaCompletarAluno user={user} turmas={turmas} onConcluido={onConcluido} />;
+}
+
+// Gate de acesso administrativo — pedido a CADA entrada de um usuário Mestre
+// (mesmo já autenticado pelo Google), nunca fica salvo entre sessões.
+function TelaSenhaMestre({ onDesbloquear }) {
+  const [senha, setSenha] = useState("");
+  const [erro, setErro] = useState("");
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (senha === CODIGO_MESTRE) {
+      onDesbloquear();
+    } else {
+      setErro("Senha mestre incorreta.");
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-paper px-4">
+      <div className="w-full max-w-sm">
+        <div className="text-center mb-6">
+          <img src={LOGO_CEDUP} alt="CEDUP Hermann Hering" className="w-16 h-16 mx-auto mb-3 rounded-lg" />
+          <h1 className="text-xl font-serif font-semibold text-ink">Acesso administrativo</h1>
+          <p className="text-xs text-inkSoft mt-1">Digite a senha mestre para continuar como Mestre.</p>
+        </div>
+        <Card>
+          <form onSubmit={handleSubmit}>
+            <Field label="Senha mestre">
+              <CampoSenha value={senha} onChange={(e) => setSenha(e.target.value)} placeholder="••••••••" />
+            </Field>
+            {erro && <div className="text-sm text-red mb-3">{erro}</div>}
+            <Botao type="submit" className="w-full justify-center">
+              Confirmar
+            </Botao>
+          </form>
+        </Card>
+        <button onClick={sair} className="text-sm text-inkSoft underline block mt-4 mx-auto">
+          Sair
+        </button>
+      </div>
+    </div>
+  );
+}
+
 
 function TelaAguardandoAprovacao({ perfil }) {
   return (
@@ -1085,6 +1073,9 @@ function GestaoTurmasView({ perfil, turmas, salvarTurmas, recarregarTurmas, usua
   const [novoNome, setNovoNome] = useState("");
   const [editandoId, setEditandoId] = useState(null);
   const [nomeEdicao, setNomeEdicao] = useState("");
+  const [turmaExpandida, setTurmaExpandida] = useState(null);
+  const [novoAlunoNome, setNovoAlunoNome] = useState("");
+  const [novoAlunoMatricula, setNovoAlunoMatricula] = useState("");
   const podeGerenciar = !!perfil?.permissoes?.gerenciarTurmas;
   const souAluno = perfil?.tipo === "Aluno";
   const souMestre = perfil?.tipo === "Mestre";
@@ -1092,7 +1083,7 @@ function GestaoTurmasView({ perfil, turmas, salvarTurmas, recarregarTurmas, usua
 
   const criar = async () => {
     if (!novoNome.trim()) return;
-    const nova = { id: uid("t"), nome: novoNome.trim(), criadoEm: Date.now() };
+    const nova = { id: uid("t"), nome: novoNome.trim(), alunosEsperados: [], criadoEm: Date.now() };
     await salvarTurmas([...(turmas || []), nova]);
     await registrarAuditoria("criar", "turma", `Criou a turma "${nova.nome}"`);
     setNovoNome("");
@@ -1104,6 +1095,37 @@ function GestaoTurmasView({ perfil, turmas, salvarTurmas, recarregarTurmas, usua
     await salvarTurmas((turmas || []).map((t) => (t.id === id ? { ...t, nome: nomeEdicao.trim() } : t)));
     await registrarAuditoria("editar", "turma", `Renomeou a turma "${antiga?.nome}" para "${nomeEdicao.trim()}"`);
     setEditandoId(null);
+  };
+
+  const adicionarAlunoEsperado = async (turma) => {
+    if (!novoAlunoNome.trim() || !novoAlunoMatricula.trim()) return;
+    const mat = novoAlunoMatricula.trim();
+    const jaExiste = (turmas || []).some((t) => (t.alunosEsperados || []).some((a) => a.matricula === mat));
+    if (jaExiste) {
+      alert("Essa matrícula já está cadastrada em alguma turma.");
+      return;
+    }
+    const registro = { nome: novoAlunoNome.trim(), matricula: mat };
+    await salvarTurmas(
+      (turmas || []).map((t) =>
+        t.id === turma.id ? { ...t, alunosEsperados: [...(t.alunosEsperados || []), registro] } : t
+      )
+    );
+    await registrarAuditoria("editar", "turma", `Adicionou aluno esperado "${registro.nome}" (matrícula ${mat}) na turma "${turma.nome}"`);
+    setNovoAlunoNome("");
+    setNovoAlunoMatricula("");
+  };
+
+  const removerAlunoEsperado = async (turma, registro) => {
+    if (!confirm(`Remover "${registro.nome}" (matrícula ${registro.matricula}) da lista da turma "${turma.nome}"?`)) return;
+    await salvarTurmas(
+      (turmas || []).map((t) =>
+        t.id === turma.id
+          ? { ...t, alunosEsperados: (t.alunosEsperados || []).filter((a) => a.matricula !== registro.matricula) }
+          : t
+      )
+    );
+    await registrarAuditoria("editar", "turma", `Removeu aluno esperado "${registro.nome}" da turma "${turma.nome}"`);
   };
 
   const excluir = async (turma) => {
@@ -1146,8 +1168,8 @@ function GestaoTurmasView({ perfil, turmas, salvarTurmas, recarregarTurmas, usua
     <div>
       <h2 className="text-lg font-serif font-semibold text-ink mb-1">Turmas</h2>
       <p className="text-sm text-inkSoft mb-4">
-        Cadastre as turmas antes de os alunos se registrarem — no cadastro, eles só podem escolher uma turma
-        já existente aqui.
+        Cadastre a turma e, para cada aluno, o nome e a matrícula em "Alunos esperados" — é essa matrícula que o
+        aluno digita no primeiro login com o Google, para entrar já vinculado (e já aprovado) na turma certa.
       </p>
 
       {podeGerenciar && (
@@ -1177,51 +1199,94 @@ function GestaoTurmasView({ perfil, turmas, salvarTurmas, recarregarTurmas, usua
       <div className="space-y-2">
         {turmasVisiveis.map((t) => {
           const vinculados = (usuarios || []).filter((u) => u.turmaId === t.id).length;
+          const expandida = turmaExpandida === t.id;
           return (
-            <Card key={t.id} className="flex items-center justify-between gap-3">
-              {editandoId === t.id ? (
-                <div className="flex-1 flex gap-2">
-                  <TxtInput value={nomeEdicao} onChange={(e) => setNomeEdicao(e.target.value)} />
-                  <Botao onClick={() => salvarEdicao(t.id)}>Salvar</Botao>
-                  <Botao variant="ghost" onClick={() => setEditandoId(null)}>
-                    Cancelar
-                  </Botao>
-                </div>
-              ) : (
-                <>
-                  <div>
-                    <div className="font-semibold text-ink text-sm">{t.nome}</div>
-                    <div className="text-xs text-inkSoft">{vinculados} usuário(s) vinculado(s)</div>
+            <Card key={t.id}>
+              <div className="flex items-center justify-between gap-3">
+                {editandoId === t.id ? (
+                  <div className="flex-1 flex gap-2">
+                    <TxtInput value={nomeEdicao} onChange={(e) => setNomeEdicao(e.target.value)} />
+                    <Botao onClick={() => salvarEdicao(t.id)}>Salvar</Botao>
+                    <Botao variant="ghost" onClick={() => setEditandoId(null)}>
+                      Cancelar
+                    </Botao>
                   </div>
-                  <div className="flex items-center gap-3 shrink-0">
-                    {souMestre && vinculados > 0 && (
-                      <button
-                        onClick={() => excluirComCascata(t)}
-                        className="text-xs text-red underline decoration-dotted hover:opacity-70"
-                        title="Zona de perigo: excluir e desvincular usuários"
-                      >
-                        Excluir e desvincular
-                      </button>
-                    )}
-                    {podeGerenciar && (
-                      <div className="flex gap-2 shrink-0">
-                        <button
-                          onClick={() => {
-                            setEditandoId(t.id);
-                            setNomeEdicao(t.nome);
-                          }}
-                          className="text-inkSoft hover:text-ink"
-                          title="Renomear"
-                        >
-                          <Pencil size={16} />
-                        </button>
-                        <button onClick={() => excluir(t)} className="text-red hover:opacity-70" title="Excluir">
-                          <Trash2 size={16} />
-                        </button>
+                ) : (
+                  <>
+                    <div>
+                      <div className="font-semibold text-ink text-sm">{t.nome}</div>
+                      <div className="text-xs text-inkSoft">
+                        {vinculados} usuário(s) vinculado(s) · {(t.alunosEsperados || []).length} matrícula(s) cadastrada(s)
                       </div>
-                    )}
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      {podeGerenciar && (
+                        <button
+                          onClick={() => setTurmaExpandida(expandida ? null : t.id)}
+                          className="text-xs text-green underline decoration-dotted hover:opacity-70"
+                        >
+                          {expandida ? "Fechar" : "Alunos esperados"}
+                        </button>
+                      )}
+                      {souMestre && vinculados > 0 && (
+                        <button
+                          onClick={() => excluirComCascata(t)}
+                          className="text-xs text-red underline decoration-dotted hover:opacity-70"
+                          title="Zona de perigo: excluir e desvincular usuários"
+                        >
+                          Excluir e desvincular
+                        </button>
+                      )}
+                      {podeGerenciar && (
+                        <div className="flex gap-2 shrink-0">
+                          <button
+                            onClick={() => {
+                              setEditandoId(t.id);
+                              setNomeEdicao(t.nome);
+                            }}
+                            className="text-inkSoft hover:text-ink"
+                            title="Renomear"
+                          >
+                            <Pencil size={16} />
+                          </button>
+                          <button onClick={() => excluir(t)} className="text-red hover:opacity-70" title="Excluir">
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+              {expandida && podeGerenciar && (
+                <div className="mt-4 pt-4 border-t border-line">
+                  <div className="text-xs text-inkSoft uppercase tracking-wide mb-2">
+                    Alunos esperados (nome + matrícula)
                   </div>
-                </>
+                  <div className="flex flex-col sm:flex-row gap-2 mb-3">
+                    <TxtInput placeholder="Nome completo" value={novoAlunoNome} onChange={(e) => setNovoAlunoNome(e.target.value)} />
+                    <TxtInput placeholder="Matrícula (ex.: 2024001)" value={novoAlunoMatricula} onChange={(e) => setNovoAlunoMatricula(e.target.value)} />
+                    <Botao onClick={() => adicionarAlunoEsperado(t)}>
+                      <Plus size={16} /> Adicionar
+                    </Botao>
+                  </div>
+                  {(t.alunosEsperados || []).length === 0 ? (
+                    <div className="text-sm text-inkSoft italic">Nenhum aluno esperado cadastrado ainda.</div>
+                  ) : (
+                    <div className="space-y-1">
+                      {(t.alunosEsperados || []).map((a) => (
+                        <div key={a.matricula} className="flex items-center justify-between text-sm bg-paper rounded-lg px-3 py-1.5">
+                          <span>
+                            {a.nome} <span className="text-inkSoft font-mono text-xs">— {a.matricula}</span>
+                          </span>
+                          <button onClick={() => removerAlunoEsperado(t, a)} className="text-red hover:opacity-70" title="Remover">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
             </Card>
           );
@@ -3329,39 +3394,40 @@ function IlustracaoLancamento() {
 
 // Mockup do seletor de Empresa ativa — acompanha o passo 3 dos Primeiros Passos.
 // Mockup da tela de Login — E-mail, Senha e botão Entrar.
+// Mockup da tela de entrada — escolha de perfil + botão do Google.
 function IlustracaoLogin() {
   return (
     <div className="border-2 border-dashed border-line rounded-xl p-4 bg-white mb-4 max-w-xs">
       <div className="space-y-3">
-        <CampoIlustrado n={1} label="E-mail" valor="voce@exemplo.com" />
-        <CampoIlustrado n={2} label="Senha" valor="•••••••••" />
         <div className="relative">
-          <NumBadge n={3} />
-          <div className="bg-green text-white text-sm font-semibold px-4 py-2 rounded-lg text-center">Entrar</div>
+          <NumBadge n={1} />
+          <div className="grid grid-cols-2 gap-2">
+            <div className="bg-green text-white text-xs font-semibold px-3 py-2 rounded-lg text-center">Aluno(a)</div>
+            <div className="border border-line text-inkSoft text-xs font-semibold px-3 py-2 rounded-lg text-center">Professor(a)</div>
+          </div>
+        </div>
+        <div className="relative">
+          <NumBadge n={2} />
+          <div className="border border-line bg-paper text-ink text-sm font-semibold px-4 py-2 rounded-lg text-center flex items-center justify-center gap-2">
+            <span className="w-4 h-4 rounded-full bg-gradient-to-br from-blue-500 via-red-500 to-yellow-400 inline-block" />
+            Continuar com o Google
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-// Mockup da tela de Cadastro (Criar conta) — mesmos campos e ordem da tela real.
+// Mockup da telinha que aparece depois do Google, no primeiro login de um
+// Aluno(a) — só pede a matrícula, para achar a turma certa.
 function IlustracaoCadastro() {
   return (
-    <div className="border-2 border-dashed border-line rounded-xl p-4 bg-white mb-4">
+    <div className="border-2 border-dashed border-line rounded-xl p-4 bg-white mb-4 max-w-xs">
       <div className="space-y-3">
-        <CampoIlustrado n={1} label="Nome completo" valor="Maria Oliveira" />
-        <div className="grid sm:grid-cols-2 gap-3">
-          <CampoIlustrado n={2} label="E-mail" valor="maria@exemplo.com" />
-          <CampoIlustrado n={3} label="Senha / Confirmar senha" valor="•••••••••" />
-        </div>
-        <div className="grid sm:grid-cols-2 gap-3">
-          <CampoIlustrado n={4} label="Você é" valor="Aluno" />
-          <CampoIlustrado n={5} label="Turma" valor="— Selecione —" />
-        </div>
-        <CampoIlustrado n={6} label="Código de Mestre (opcional)" valor="" />
-        <div className="relative inline-block">
-          <NumBadge n={7} />
-          <div className="bg-green text-white text-sm font-semibold px-4 py-2 rounded-lg">Criar conta</div>
+        <CampoIlustrado n={1} label="Matrícula" valor="2024001" />
+        <div className="relative">
+          <NumBadge n={2} />
+          <div className="bg-green text-white text-sm font-semibold px-4 py-2 rounded-lg text-center">Entrar</div>
         </div>
       </div>
     </div>
@@ -3490,29 +3556,28 @@ function ManualAcesso() {
     <div>
       <h3 className="font-serif font-semibold text-ink text-lg mb-1">Cadastro do Aluno e Acesso</h3>
       <p className="text-sm text-inkSoft mb-4">
-        Tudo que envolve criar sua conta e entrar no sistema pela primeira vez.
+        O acesso ao sistema é feito só com sua conta Google — não existe mais cadastro por e-mail e senha.
       </p>
 
       <h4 className="font-semibold text-ink text-sm mb-1">Tela de entrada (Login)</h4>
       <p className="text-sm text-inkSoft mb-3">
-        Se você já tem conta aprovada, entre com seu e-mail e senha cadastrados. Esqueceu a senha?
-        Use o link "Esqueci minha senha" logo abaixo do botão Entrar.
+        Escolha seu perfil — <b>Aluno(a)</b> ou <b>Professor(a)</b> — e clique em "Continuar com o Google".
+        Use a mesma conta Google sempre, para não perder o acesso.
       </p>
       <IlustracaoLogin />
 
-      <h4 className="font-semibold text-ink text-sm mb-1">Tela de cadastro (Criar conta)</h4>
+      <h4 className="font-semibold text-ink text-sm mb-1">Primeiro login — Aluno(a)</h4>
       <p className="text-sm text-inkSoft mb-3">
-        Ainda não tem conta? Clique em "Ainda não tenho conta — cadastrar", na tela de login, e
-        preencha os campos abaixo. Como Aluno, a Turma é obrigatória — se ela ainda não aparecer na
-        lista, peça ao professor(a) para cadastrá-la antes.
+        Depois do Google, é pedida sua <b>matrícula</b>. O professor(a) já precisa ter cadastrado seu nome e
+        matrícula na turma (módulo Turmas → "Alunos esperados") — se a matrícula não for encontrada, o sistema
+        avisa e você deve procurar o professor(a) antes de tentar de novo.
       </p>
       <IlustracaoCadastro />
 
-      <h4 className="font-semibold text-ink text-sm mb-1">Aprovação do cadastro</h4>
+      <h4 className="font-semibold text-ink text-sm mb-1">Primeiro login — Professor(a)</h4>
       <div className="text-sm text-inkSoft bg-gold/10 border border-gold/40 rounded-lg p-3 mb-4">
-        Depois de se cadastrar, sua conta fica <b>pendente</b> até um usuário <b>Mestre</b> ou{" "}
-        <b>Professor</b> aprová-la. Você só consegue entrar depois dessa aprovação — avise seu
-        professor(a) que acabou de se cadastrar.
+        Depois do Google, é pedido um <b>Código de Mestre</b> (opcional — só preencha se um Usuário Mestre te
+        passou um). Sem o código, sua conta vira Professor(a) e fica <b>pendente</b> até um Mestre aprová-la.
       </div>
 
       <h4 className="font-semibold text-ink text-sm mb-1">Empresa ativa</h4>
@@ -3524,13 +3589,12 @@ function ManualAcesso() {
 
       <h4 className="font-semibold text-ink text-sm mb-1">Resumo geral dos primeiros passos</h4>
       <Card>
-        <PassoManual n={1} titulo="Confira se sua turma já está cadastrada">
-          No módulo <b>Turmas</b>, veja se a sua já aparece na lista. Se não, peça ao professor
-          para cadastrá-la — não é possível criar um usuário sem escolher uma turma já existente.
+        <PassoManual n={1} titulo="Peça ao professor(a) para te cadastrar na turma">
+          No módulo <b>Turmas</b>, o professor(a) registra seu nome e sua matrícula em "Alunos esperados" —
+          sem isso, seu primeiro login não encontra a turma certa.
         </PassoManual>
-        <PassoManual n={2} titulo="Cadastre-se e aguarde a aprovação">
-          Preencha nome, e-mail, senha, perfil (Aluno) e a turma. Um Mestre ou Professor precisa
-          aprovar sua conta.
+        <PassoManual n={2} titulo="Entre com sua conta Google">
+          Escolha o perfil Aluno(a), clique em "Continuar com o Google" e informe sua matrícula quando pedido.
         </PassoManual>
         <PassoManual n={3} titulo="Selecione a empresa ativa">
           Confirme que está correto antes de começar — tudo o que você fizer fica registrado
@@ -3550,8 +3614,8 @@ function ManualAcesso() {
           botão de "atualizar".
         </PassoManual>
         <PassoManual n={7} titulo="Seus dados já ficam salvos na nuvem">
-          Diferente da versão antiga, agora tudo é sincronizado automaticamente — não é mais
-          preciso baixar backup manual para não perder o trabalho.
+          Tudo é sincronizado automaticamente — não é preciso baixar backup manual para não
+          perder o trabalho.
         </PassoManual>
       </Card>
       <div className="text-xs text-inkSoft mt-3">
@@ -3810,7 +3874,8 @@ function ManualFaq() {
     ['Por que meu Balancete está "Divergente"?', 'Confira se em algum lançamento o valor foi digitado errado, ou se a conta de débito ficou igual à de crédito. Some manualmente a coluna "Total Débitos" e "Total Créditos" do Balancete para localizar a diferença.'],
     ["Sumiram meus lançamentos!", "Agora os dados ficam salvos na nuvem (Firebase) e sincronizam entre dispositivos — se você está logado com a mesma conta, eles devem aparecer. Se o problema persistir, avise um usuário Mestre."],
     ["Não encontro o botão para excluir um lançamento/empresa/usuário", 'Como Aluno, essas ações ficam bloqueadas por padrão para evitar exclusões acidentais. Peça a um usuário Mestre ou Professor para excluir o item, ou para liberar a permissão correspondente para você (módulo Usuários → botão "Permissões").'],
-    ["Minha turma não aparece na lista ao me cadastrar", "Só é possível vincular um usuário a uma turma já cadastrada. Peça a um Mestre ou Professor para cadastrá-la no módulo Turmas antes de você se registrar."],
+    ["Minha matrícula não é encontrada ao entrar", "O professor(a) precisa cadastrar seu nome e matrícula na turma antes (módulo Turmas → \"Alunos esperados\"). Sem isso, o sistema não sabe a qual turma te vincular. Avise seu professor(a) e tente de novo."],
+    ["Preciso digitar a senha mestre toda vez que entro?", "Só se sua conta for do tipo Mestre — nesse caso, a senha é pedida a cada entrada, mesmo já logado pelo Google, por segurança. Aluno e Professor não veem essa tela."],
     ["Posso usar no celular?", 'Sim, o sistema se adapta a telas pequenas. Toque no botão "☰ Menu" para abrir a navegação lateral.'],
     ["Preciso estar conectado à internet?", "Sim — como os dados agora ficam salvos na nuvem, é necessário estar conectado para lançar, consultar ou ver relatórios atualizados."],
     ["Posso praticar em mais de uma empresa?", "Cada aluno tem uma empresa vinculada pelo professor(a). Se você precisar de outra, peça para ele(a) cadastrar e vincular a você no módulo Empresas."],
@@ -3892,7 +3957,7 @@ function ManualProfTurmas() {
     <div>
       <h3 className="font-serif font-semibold text-ink text-lg mb-1">Gestão de Turmas</h3>
       <p className="text-sm text-inkSoft mb-4">
-        A turma é o primeiro cadastro do sistema — sem ela, nenhum aluno consegue se registrar.
+        A turma é o primeiro cadastro do sistema — sem ela, nenhum aluno consegue entrar.
       </p>
       <TabelaIlustrada
         legenda="Card de cada turma, com a contagem de usuários vinculados"
@@ -3906,14 +3971,19 @@ function ManualProfTurmas() {
       <Card className="mb-4">
         <PassoManual n={1} titulo="Cadastrar uma turma">
           Vá em <b>Turmas</b>, digite o nome (ex.: "3ª Contabilidade — Manhã") e clique em
-          "Adicionar". Faça isso antes de divulgar o link de cadastro aos alunos.
+          "Adicionar".
         </PassoManual>
-        <PassoManual n={2} titulo="Renomear ou excluir">
+        <PassoManual n={2} titulo='Cadastrar "Alunos esperados" (nome + matrícula)'>
+          Clique em "Alunos esperados" no card da turma e adicione o nome completo e a matrícula
+          de cada aluno. É essa lista que o sistema consulta no primeiro login de cada aluno —
+          sem o registro aqui, a matrícula digitada não é encontrada.
+        </PassoManual>
+        <PassoManual n={3} titulo="Renomear ou excluir">
           Use os ícones de lápis (editar) e lixeira (excluir) em cada card. Uma turma com
           usuários vinculados não pode ser excluída pelo caminho normal — o sistema avisa e
           pede para mudar a turma desses usuários primeiro.
         </PassoManual>
-        <PassoManual n={3} titulo='Zona de perigo: "Excluir e desvincular"'>
+        <PassoManual n={4} titulo='Zona de perigo: "Excluir e desvincular"'>
           Só um usuário <b>Mestre</b> vê esse link (em vermelho) quando a turma já tem usuários
           vinculados. Ele exclui a turma e desvincula todos os alunos dela de uma vez — sem
           apagar as contas deles, só tira a turma. Pede confirmação digitando o nome exato da
@@ -3974,8 +4044,9 @@ function ManualProfUsuarios() {
     <div>
       <h3 className="font-serif font-semibold text-ink text-lg mb-1">Usuários e Aprovações</h3>
       <p className="text-sm text-inkSoft mb-4">
-        Todo cadastro novo (Aluno ou Professor) entra como <b>pendente</b> e precisa de aprovação
-        antes de conseguir entrar no sistema.
+        Um Aluno(a) cuja matrícula já está cadastrada na turma (ver Turmas → "Alunos esperados")
+        entra <b>direto, já aprovado</b> — o professor(a) autorizou ao cadastrar a matrícula. Já um
+        Professor(a) sem Código de Mestre entra como <b>pendente</b> e precisa de aprovação.
       </p>
 
       <h4 className="font-semibold text-ink text-sm mb-1">Aprovações</h4>
@@ -5161,36 +5232,34 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
 
 export default function App() {
   const [user, setUser] = useState(undefined);
-  const [tela, setTela] = useState("login"); // login | cadastro
   const [turmas] = useSharedList("turmas");
   const [perfil, recarregarPerfil] = useUsuario(user?.uid);
+  // Acesso Mestre é revalidado a cada entrada — nunca fica salvo entre sessões.
+  const [mestreDesbloqueado, setMestreDesbloqueado] = useState(false);
 
   useEffect(() => {
-    const unsub = observarSessao((u) => setUser(u || null));
+    const unsub = observarSessao((u) => {
+      setUser(u || null);
+      setMestreDesbloqueado(false);
+    });
     return () => unsub();
   }, []);
 
   if (user === undefined) return <LoadingScreen texto="Verificando sessão…" />;
 
-  if (!user) {
-    return tela === "cadastro" ? (
-      <TelaCadastro turmas={turmas} onIrParaLogin={() => setTela("login")} />
-    ) : (
-      <TelaLogin onIrParaCadastro={() => setTela("cadastro")} />
-    );
-  }
+  if (!user) return <TelaLogin />;
 
   if (perfil === undefined) return <LoadingScreen texto="Carregando seu perfil…" />;
 
   if (perfil === null) {
-    const viaGoogle = user.providerData?.some((p) => p.providerId === "google.com");
-    if (viaGoogle) {
-      return <TelaCompletarCadastroGoogle user={user} turmas={turmas} onConcluido={recarregarPerfil} />;
-    }
-    return <LoadingScreen texto="Preparando sua conta…" />;
+    return <TelaCompletarCadastroGoogle user={user} turmas={turmas} onConcluido={recarregarPerfil} />;
   }
 
   if (!perfil.aprovado) return <TelaAguardandoAprovacao perfil={perfil} />;
+
+  if (perfil.tipo === "Mestre" && !mestreDesbloqueado) {
+    return <TelaSenhaMestre onDesbloquear={() => setMestreDesbloqueado(true)} />;
+  }
 
   return <Dashboard user={user} perfil={perfil} recarregarPerfil={recarregarPerfil} />;
 }
