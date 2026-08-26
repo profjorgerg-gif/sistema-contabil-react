@@ -6038,8 +6038,8 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
 
 export default function App() {
   const [user, setUser] = useState(undefined);
-  const [turmas] = useSharedList("turmas");
-  const [empresas, salvarEmpresas] = useSharedList("empresas");
+  const [turmas, , recarregarTurmasApp] = useSharedList("turmas");
+  const [empresas, salvarEmpresas, recarregarEmpresasApp] = useSharedList("empresas");
   const [perfil, recarregarPerfil] = useUsuario(user?.uid);
   // Acesso Mestre é revalidado a cada entrada — nunca fica salvo entre sessões.
   const [mestreDesbloqueado, setMestreDesbloqueado] = useState(false);
@@ -6051,6 +6051,17 @@ export default function App() {
     });
     return () => unsub();
   }, []);
+
+  // Sempre que a sessão muda (login, logout, troca de conta), busca turmas e
+  // empresas de novo — sem isso, quem loga logo depois de outra pessoa ter
+  // cadastrado algo na mesma aba do navegador via uma lista desatualizada
+  // (ex.: aluno cadastrado pelo professor na mesma sessão do navegador).
+  useEffect(() => {
+    if (user) {
+      recarregarTurmasApp();
+      recarregarEmpresasApp();
+    }
+  }, [user?.uid]);
 
   if (user === undefined) return <LoadingScreen texto="Verificando sessão…" />;
 
