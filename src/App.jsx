@@ -4,12 +4,13 @@ import {
   ClipboardList, FileBarChart, ScrollText, History, Save, Eye, EyeOff,
   Crown, UserCheck, UserX, Pencil, Trash2, Plus, ShieldCheck, Wallet,
   Landmark, GraduationCap, Layers, Package, ChevronLeft, ChevronRight, Download, ExternalLink,
-  LifeBuoy, Printer, Upload, Star,
+  LifeBuoy, Printer, Upload, Star, TrendingUp,
 } from "lucide-react";
 import {
   observarSessao, entrarComGoogle, sair, traduzErroAuth, CODIGO_MESTRE,
 } from "./firebaseAuth";
-import { LOGO_CEDUP } from "./logo";
+// LOGO_CEDUP removida do projeto — a identidade visual agora usa só ícone +
+// tipografia, sem imagem de logo (ver IconeApp abaixo).
 import { CONTAS, GRUPOS } from "./contas";
 
 // ============================================================================
@@ -456,6 +457,18 @@ function Card({ children, className = "" }) {
   );
 }
 
+// Identidade visual do sistema — sem imagem de logo, só ícone + cores da
+// paleta (verde/dourado). "tamanho" controla o tamanho do quadrado/ícone.
+function IconeApp({ tamanho = "w-16 h-16", iconeTamanho = 30, className = "" }) {
+  return (
+    <div
+      className={`${tamanho} ${className} rounded-xl bg-green flex items-center justify-center shrink-0 shadow-sm`}
+    >
+      <Landmark size={iconeTamanho} className="text-gold" strokeWidth={1.75} />
+    </div>
+  );
+}
+
 function Pill({ children, tone = "green" }) {
   const tons = {
     green: "bg-green/10 text-green border-green/30",
@@ -474,7 +487,7 @@ function LoadingScreen({ texto = "Carregando…" }) {
   return (
     <div className="min-h-screen flex items-center justify-center bg-paper">
       <div className="text-center">
-        <img src={LOGO_CEDUP} alt="CEDUP Hermann Hering" className="w-16 h-16 mx-auto mb-4 rounded-lg" />
+        <IconeApp tamanho="w-16 h-16" iconeTamanho={30} className="mx-auto mb-4" />
         <div className="text-inkSoft text-sm font-serif">{texto}</div>
       </div>
     </div>
@@ -544,57 +557,111 @@ function TelaLogin() {
     }
   };
 
+  const destaques = [
+    { icon: Layers, texto: "9 módulos do ciclo contábil — do Plano de Contas ao Balanço Patrimonial" },
+    { icon: Building2, texto: "Cada aluno constrói e administra sua própria empresa individual" },
+    { icon: ClipboardList, texto: "Atividades avaliativas com correção automática e notas" },
+  ];
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-paper px-4">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-6">
-          <img src={LOGO_CEDUP} alt="CEDUP Hermann Hering" className="w-16 h-16 mx-auto mb-3 rounded-lg" />
-          <h1 className="text-xl font-serif font-semibold text-ink">Sistema de Escrituração Contábil</h1>
-          <p className="text-xs text-inkSoft mt-1">CEDUP Hermann Hering · Curso Técnico em Contabilidade</p>
-        </div>
-        <Card>
-          <div className="text-xs text-inkSoft uppercase tracking-wide mb-2">Perfil de acesso</div>
-          <div className="grid grid-cols-2 gap-2 mb-5">
-            <button
-              type="button"
-              onClick={() => setPerfilTab("Aluno")}
-              className={
-                "px-3 py-2 rounded-lg text-sm font-semibold border transition-colors " +
-                (perfilTab === "Aluno" ? "bg-green text-white border-green" : "border-line text-inkSoft hover:text-ink")
-              }
-            >
-              Aluno(a)
-            </button>
-            <button
-              type="button"
-              onClick={() => setPerfilTab("Professor")}
-              className={
-                "px-3 py-2 rounded-lg text-sm font-semibold border transition-colors " +
-                (perfilTab === "Professor" ? "bg-green text-white border-green" : "border-line text-inkSoft hover:text-ink")
-              }
-            >
-              Professor(a)
-            </button>
+    <div className="min-h-screen flex flex-col md:flex-row">
+      {/* Coluna institucional — some em telas pequenas, aparece a partir de md */}
+      <div className="hidden md:flex md:w-1/2 lg:w-3/5 bg-ink text-white flex-col justify-between p-10 lg:p-14">
+        <div>
+          <div className="flex items-center gap-3 mb-10">
+            <IconeApp tamanho="w-11 h-11" iconeTamanho={22} />
+            <div className="text-xs uppercase tracking-wide text-gold font-semibold">
+              CEDUP Hermann Hering
+              <div className="text-white/50 font-normal normal-case">Curso Técnico em Contabilidade</div>
+            </div>
           </div>
-          <p className="text-xs text-inkSoft mb-4">
-            {perfilTab === "Aluno"
-              ? "Depois de entrar com o Google, vamos pedir sua matrícula para vincular à turma certa."
-              : "Depois de entrar com o Google, se você tiver um Código de Mestre, vai poder informá-lo."}
+          <h1 className="font-serif font-bold text-4xl lg:text-5xl leading-tight mb-4">
+            Sistema de Escrituração Contábil
+          </h1>
+          <p className="text-white/70 text-base lg:text-lg max-w-md mb-10">
+            Do lançamento ao fechamento — pratique contabilidade construindo e administrando uma
+            empresa simulada, passo a passo.
           </p>
-          {erro && <div className="text-sm text-red mb-3">{erro}</div>}
-          <button
-            type="button"
-            onClick={handleGoogle}
-            disabled={carregando}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-line bg-white text-ink text-sm font-semibold hover:bg-paper transition-colors disabled:opacity-60"
-          >
-            <GoogleIcon />
-            {carregando ? "Entrando…" : "Continuar com o Google"}
-          </button>
-        </Card>
-        <p className="text-xs text-inkSoft text-center mt-4">
-          Autenticado via Firebase Authentication — sempre conta Google.
+          <div className="flex items-end gap-1.5 mb-10 h-16">
+            {[40, 55, 45, 70, 60, 85, 100].map((h, i) => (
+              <div
+                key={i}
+                className="w-3.5 rounded-t bg-gold/80"
+                style={{ height: `${h}%`, opacity: 0.5 + i * 0.07 }}
+              />
+            ))}
+          </div>
+          <div className="space-y-4">
+            {destaques.map(({ icon: Icone, texto }) => (
+              <div key={texto} className="flex items-start gap-3">
+                <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center shrink-0">
+                  <Icone size={16} className="text-gold" />
+                </div>
+                <p className="text-sm text-white/80 leading-snug pt-1">{texto}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+        <p className="text-xs text-white/40 mt-10">
+          © 2026 Prof. Esp. Jorge Lima Cardoso. Todos os direitos reservados. Plataforma didática
+          desenvolvida para o CEDUP Hermann Hering — Curso Técnico em Contabilidade.
         </p>
+      </div>
+
+      {/* Coluna de login */}
+      <div className="flex-1 flex items-center justify-center bg-paper px-4 py-10">
+        <div className="w-full max-w-sm">
+          <div className="text-center mb-6 md:hidden">
+            <IconeApp tamanho="w-16 h-16" iconeTamanho={30} className="mx-auto mb-3" />
+            <h1 className="text-xl font-serif font-semibold text-ink">Sistema de Escrituração Contábil</h1>
+            <p className="text-xs text-inkSoft mt-1">CEDUP Hermann Hering · Curso Técnico em Contabilidade</p>
+          </div>
+          <Card>
+            <h2 className="font-serif font-semibold text-ink text-lg mb-1">Entrar no sistema</h2>
+            <p className="text-xs text-inkSoft mb-5">Entre com sua conta Google para acessar a plataforma.</p>
+            <div className="text-xs text-inkSoft uppercase tracking-wide mb-2">Perfil de acesso</div>
+            <div className="grid grid-cols-2 gap-2 mb-5">
+              <button
+                type="button"
+                onClick={() => setPerfilTab("Aluno")}
+                className={
+                  "px-3 py-2 rounded-lg text-sm font-semibold border transition-colors " +
+                  (perfilTab === "Aluno" ? "bg-green text-white border-green" : "border-line text-inkSoft hover:text-ink")
+                }
+              >
+                Aluno(a)
+              </button>
+              <button
+                type="button"
+                onClick={() => setPerfilTab("Professor")}
+                className={
+                  "px-3 py-2 rounded-lg text-sm font-semibold border transition-colors " +
+                  (perfilTab === "Professor" ? "bg-green text-white border-green" : "border-line text-inkSoft hover:text-ink")
+                }
+              >
+                Professor(a)
+              </button>
+            </div>
+            <p className="text-xs text-inkSoft mb-4">
+              {perfilTab === "Aluno"
+                ? "Depois de entrar com o Google, vamos pedir sua matrícula para vincular à turma certa."
+                : "Depois de entrar com o Google, se você tiver um Código de Mestre, vai poder informá-lo."}
+            </p>
+            {erro && <div className="text-sm text-red mb-3">{erro}</div>}
+            <button
+              type="button"
+              onClick={handleGoogle}
+              disabled={carregando}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-line bg-white text-ink text-sm font-semibold hover:bg-paper transition-colors disabled:opacity-60"
+            >
+              <GoogleIcon />
+              {carregando ? "Entrando…" : "Continuar com o Google"}
+            </button>
+          </Card>
+          <p className="text-xs text-inkSoft text-center mt-4">
+            Autenticado via Firebase Authentication — sempre conta Google.
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -639,7 +706,7 @@ function TelaCompletarProfessor({ user, onConcluido }) {
     <div className="min-h-screen flex items-center justify-center bg-paper px-4 py-8">
       <div className="w-full max-w-sm">
         <div className="text-center mb-6">
-          <img src={LOGO_CEDUP} alt="CEDUP Hermann Hering" className="w-16 h-16 mx-auto mb-3 rounded-lg" />
+          <IconeApp tamanho="w-16 h-16" iconeTamanho={30} className="mx-auto mb-3" />
           <h1 className="text-xl font-serif font-semibold text-ink">Complete seu cadastro</h1>
           <p className="text-xs text-inkSoft mt-1">
             Entrando como {user.displayName || user.email} — Professor(a).
@@ -760,7 +827,7 @@ function TelaCompletarAluno({ user, turmas, empresas, salvarEmpresas, onConcluid
     <div className="min-h-screen flex items-center justify-center bg-paper px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-6">
-          <img src={LOGO_CEDUP} alt="CEDUP Hermann Hering" className="w-16 h-16 mx-auto mb-3 rounded-lg" />
+          <IconeApp tamanho="w-16 h-16" iconeTamanho={30} className="mx-auto mb-3" />
           <h1 className="text-xl font-serif font-semibold text-ink">Olá, {user.displayName || user.email}!</h1>
           <p className="text-xs text-inkSoft mt-1">Informe sua matrícula para entrar na sua turma.</p>
         </div>
@@ -842,7 +909,7 @@ function TelaSenhaMestre({ onDesbloquear }) {
     <div className="min-h-screen flex items-center justify-center bg-paper px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-6">
-          <img src={LOGO_CEDUP} alt="CEDUP Hermann Hering" className="w-16 h-16 mx-auto mb-3 rounded-lg" />
+          <IconeApp tamanho="w-16 h-16" iconeTamanho={30} className="mx-auto mb-3" />
           <h1 className="text-xl font-serif font-semibold text-ink">Acesso administrativo</h1>
           <p className="text-xs text-inkSoft mt-1">Digite a senha mestre para continuar como Mestre.</p>
         </div>
@@ -886,7 +953,7 @@ function TelaConfirmarMatricula({ perfil, onDesbloquear }) {
     <div className="min-h-screen flex items-center justify-center bg-paper px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-6">
-          <img src={LOGO_CEDUP} alt="CEDUP Hermann Hering" className="w-16 h-16 mx-auto mb-3 rounded-lg" />
+          <IconeApp tamanho="w-16 h-16" iconeTamanho={30} className="mx-auto mb-3" />
           <h1 className="text-xl font-serif font-semibold text-ink">Confirme sua matrícula</h1>
           <p className="text-xs text-inkSoft mt-1">
             Olá, {perfil.nome} — por segurança, confirme sua matrícula a cada entrada.
@@ -921,7 +988,7 @@ function TelaAguardandoAprovacao({ perfil }) {
   return (
     <div className="min-h-screen flex items-center justify-center bg-paper px-4">
       <div className="w-full max-w-sm text-center">
-        <img src={LOGO_CEDUP} alt="CEDUP Hermann Hering" className="w-16 h-16 mx-auto mb-4 rounded-lg" />
+        <IconeApp tamanho="w-16 h-16" iconeTamanho={30} className="mx-auto mb-4" />
         <h1 className="text-lg font-serif font-semibold text-ink mb-2">Cadastro em análise</h1>
         <p className="text-sm text-inkSoft mb-6">
           Olá, {perfil?.nome || "tudo bem"}! Seu cadastro como <b>{perfil?.tipo}</b> foi recebido e está aguardando
@@ -970,7 +1037,7 @@ function Layout({ perfil, aba, setAba, podeVoltar, aoVoltar, children }) {
         }
       >
         <div className="p-5 flex items-center gap-3 border-b border-white/10">
-          <img src={LOGO_CEDUP} alt="CEDUP Hermann Hering" className="w-10 h-10 rounded-lg" />
+          <IconeApp tamanho="w-10 h-10" iconeTamanho={20} />
           <div>
             <div className="font-serif font-semibold text-sm leading-tight">Sistema Contábil</div>
             <div className="text-[11px] text-white/60">CEDUP Hermann Hering</div>
@@ -6726,7 +6793,7 @@ class ErrorBoundary extends Component {
       return (
         <div className="min-h-screen flex items-center justify-center bg-paper px-4">
           <div className="max-w-md text-center">
-            <img src={LOGO_CEDUP} alt="CEDUP Hermann Hering" className="w-16 h-16 mx-auto mb-4 rounded-lg" />
+            <IconeApp tamanho="w-16 h-16" iconeTamanho={30} className="mx-auto mb-4" />
             <h1 className="text-lg font-serif font-semibold text-ink mb-2">Algo deu errado</h1>
             <p className="text-sm text-inkSoft mb-4">
               Aconteceu um erro inesperado nesta tela. Tente recarregar a página — se acontecer de novo,
