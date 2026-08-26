@@ -77,8 +77,8 @@ const EMPRESA_ITENS = [
 
 // Conteúdo de apoio didático (Fase 4) — não depende de empresa ativa.
 const APRENDIZADO_ITENS = [
-  { id: "introducao", label: "Introdução à Contabilidade", icon: GraduationCap },
   { id: "manual", label: "Manual do Aluno", icon: BookOpen },
+  { id: "introducao", label: "Introdução à Contabilidade", icon: GraduationCap },
   { id: "manual-professor", label: "Manual do Professor", icon: ShieldCheck },
   { id: "manual-operacionalizacao", label: "Manual de Operacionalização", icon: Landmark },
   { id: "checklist-dev", label: "Checklist de Desenvolvimento", icon: ClipboardList },
@@ -1955,7 +1955,7 @@ function sugerirProximoCodigo(contas, grupo, tipo) {
   return `${grupoDigitoBase(grupo)}.1`;
 }
 
-function GestaoPlanoContasView({ perfil, contas, salvarPlanoContas, auditoria, registrarAuditoria }) {
+function GestaoPlanoContasView({ perfil, contas, salvarPlanoContas, auditoria, registrarAuditoria, empresas, notas, salvarNotas }) {
   const podeEditar = perfil?.tipo === "Mestre";
   const [filtro, setFiltro] = useState("");
   const [mostrarForm, setMostrarForm] = useState(false);
@@ -2244,6 +2244,15 @@ function GestaoPlanoContasView({ perfil, contas, salvarPlanoContas, auditoria, r
           </div>
         </Card>
       )}
+      <AtividadeAvaliativa
+        moduloId="plano-contas"
+        moduloLabel="Plano de Contas"
+        perfil={perfil}
+        empresas={empresas}
+        notas={notas}
+        salvarNotas={salvarNotas}
+        registrarAuditoria={registrarAuditoria}
+      />
     </div>
   );
 }
@@ -2892,7 +2901,7 @@ function SeloFechamento({ ok, rotulo, formula }) {
 
 // ---- Balancete de Verificação ----
 
-function GestaoBalanceteView({ empresa, lancamentos, saldos, leaves, contaByCode }) {
+function GestaoBalanceteView({ empresa, lancamentos, saldos, leaves, contaByCode, perfil, empresas, notas, salvarNotas, registrarAuditoria }) {
   if (!empresa) return <div className="text-sm text-inkSoft italic">Selecione uma empresa ativa acima.</div>;
 
   let totDeb = 0, totCred = 0, totDev = 0, totCre = 0;
@@ -2956,13 +2965,22 @@ function GestaoBalanceteView({ empresa, lancamentos, saldos, leaves, contaByCode
           </tfoot>
         </table>
       </Card>
+      <AtividadeAvaliativa
+        moduloId="balancete"
+        moduloLabel="Balancete de Verificação"
+        perfil={perfil}
+        empresas={empresas}
+        notas={notas}
+        salvarNotas={salvarNotas}
+        registrarAuditoria={registrarAuditoria}
+      />
     </div>
   );
 }
 
 // ---- DRE ----
 
-function GestaoDREView({ empresa, lancamentos, saldos }) {
+function GestaoDREView({ empresa, lancamentos, saldos, perfil, empresas, notas, salvarNotas, registrarAuditoria }) {
   if (!empresa) return <div className="text-sm text-inkSoft italic">Selecione uma empresa ativa acima.</div>;
   const d = computeDRE(lancamentos, saldos);
 
@@ -2994,6 +3012,15 @@ function GestaoDREView({ empresa, lancamentos, saldos }) {
         <LinhaDRE label="(-) Provisão para IRPJ e CSLL" valor={d.provIRPJCSLL} tom="indent" />
         <LinhaDRE label="(=) RESULTADO LÍQUIDO DO EXERCÍCIO" valor={d.resultadoLiquido} tom="final" />
       </Card>
+      <AtividadeAvaliativa
+        moduloId="dre"
+        moduloLabel="DRE"
+        perfil={perfil}
+        empresas={empresas}
+        notas={notas}
+        salvarNotas={salvarNotas}
+        registrarAuditoria={registrarAuditoria}
+      />
     </div>
   );
 }
@@ -3525,7 +3552,7 @@ function derivarMovimentosEstoque(lancamentos, contaByCode) {
     .sort((a, b) => a.data.localeCompare(b.data));
 }
 
-function GestaoEstoqueView({ empresa, lancamentos, contaByCode }) {
+function GestaoEstoqueView({ empresa, lancamentos, contaByCode, perfil, empresas, notas, salvarNotas, registrarAuditoria }) {
   if (!empresa) {
     return <div className="text-sm text-inkSoft italic">Selecione uma empresa ativa acima para ver o estoque.</div>;
   }
@@ -3641,11 +3668,20 @@ function GestaoEstoqueView({ empresa, lancamentos, contaByCode }) {
           </div>
         </>
       )}
+      <AtividadeAvaliativa
+        moduloId="estoque"
+        moduloLabel="Controle de Estoque"
+        perfil={perfil}
+        empresas={empresas}
+        notas={notas}
+        salvarNotas={salvarNotas}
+        registrarAuditoria={registrarAuditoria}
+      />
     </div>
   );
 }
 
-function GestaoIntroducaoView({ contas }) {
+function GestaoIntroducaoView({ contas, perfil, empresas, notas, salvarNotas, registrarAuditoria }) {
   const [sub, setSub] = useState("principios");
   return (
     <div>
@@ -3654,6 +3690,15 @@ function GestaoIntroducaoView({ contas }) {
       {sub === "classificacao" && <IntroClassificacao contas={contas} />}
       {sub === "estruturabp" && <IntroEstruturaBP />}
       {sub === "regimes" && <IntroRegimes />}
+      <AtividadeAvaliativa
+        moduloId="introducao"
+        moduloLabel="Introdução à Contabilidade"
+        perfil={perfil}
+        empresas={empresas}
+        notas={notas}
+        salvarNotas={salvarNotas}
+        registrarAuditoria={registrarAuditoria}
+      />
     </div>
   );
 }
@@ -5201,6 +5246,234 @@ function GestaoBackupView({ perfil, turmas, empresas, usuarios, auditoria, regis
 // próprias. Média calculada automaticamente a partir dos módulos avaliados.
 // ============================================================================
 
+// ============================================================================
+// ATIVIDADES AVALIATIVAS — questões objetivas (múltipla escolha e V/F),
+// corrigidas automaticamente, com nota (0,0 a 10,0) gravada no módulo de
+// Notas do aluno. Aparecem no fim de Introdução à Contabilidade, Plano de
+// Contas, Controle de Estoque, Balancete e DRE.
+// ============================================================================
+
+const BANCO_ATIVIDADES = {
+  introducao: [
+    { tipo: "vf", enunciado: "Pelo Princípio da Entidade, o patrimônio da empresa se confunde com o patrimônio pessoal dos seus sócios.", correta: false },
+    { tipo: "multipla", enunciado: "Qual princípio contábil pressupõe que a empresa continuará em operação por prazo indeterminado, salvo evidência em contrário?", opcoes: ["Entidade", "Continuidade", "Oportunidade", "Prudência"], correta: 1 },
+    { tipo: "vf", enunciado: "Pelo Princípio da Oportunidade, os fatos contábeis devem ser reconhecidos no momento em que ocorrem, de forma tempestiva e completa.", correta: true },
+    { tipo: "multipla", enunciado: "Diante de incerteza entre duas alternativas de mensuração, qual princípio orienta a adotar o menor valor para ativos e o maior para passivos/despesas?", opcoes: ["Competência", "Registro pelo Valor Original", "Prudência (Conservadorismo)", "Continuidade"], correta: 2 },
+    { tipo: "vf", enunciado: "Pelo Regime de Competência, receitas e despesas são reconhecidas no período em que são recebidas ou pagas, e não em que ocorrem.", correta: false },
+    { tipo: "multipla", enunciado: "No Balanço Patrimonial, em qual grupo ficam os bens e direitos que a empresa espera realizar (converter em dinheiro) em até 12 meses?", opcoes: ["Ativo Não Circulante", "Passivo Circulante", "Ativo Circulante", "Patrimônio Líquido"], correta: 2 },
+    { tipo: "multipla", enunciado: "O Patrimônio Líquido representa:", opcoes: ["As dívidas da empresa com terceiros", "Os recursos próprios dos sócios investidos na empresa", "O total de mercadorias em estoque", "O lucro bruto do período"], correta: 1 },
+    { tipo: "vf", enunciado: "Pelo Princípio do Registro pelo Valor Original, os elementos patrimoniais são registrados pelos valores de entrada, podendo sofrer atualizações posteriores previstas em normas específicas.", correta: true },
+  ],
+  "plano-contas": [
+    { tipo: "multipla", enunciado: "Uma conta do grupo Ativo, com natureza Devedora, tem seu saldo aumentado por lançamentos:", opcoes: ["A crédito", "A débito", "De encerramento", "Não sofre alteração"], correta: 1 },
+    { tipo: "vf", enunciado: "Contas classificadas como “Grupo” ou “Subgrupo” (níveis mais altos da hierarquia) recebem lançamento diretamente, assim como as contas analíticas.", correta: false },
+    { tipo: "multipla", enunciado: "A conta “Caixa Geral” pertence a qual grupo do plano de contas?", opcoes: ["Passivo", "Patrimônio Líquido", "Ativo", "Resultado"], correta: 2 },
+    { tipo: "multipla", enunciado: "Qual é a natureza (lado que aumenta o saldo) típica de uma conta do Passivo, como “Fornecedores”?", opcoes: ["Devedora", "Credora", "Mista", "Não tem natureza"], correta: 1 },
+    { tipo: "vf", enunciado: "O plano de contas do sistema é único e compartilhado por todas as empresas cadastradas.", correta: true },
+    { tipo: "multipla", enunciado: "Contas do grupo 4 (Receitas) têm natureza:", opcoes: ["Devedora", "Credora", "Neutra", "Depende do lançamento"], correta: 1 },
+  ],
+  estoque: [
+    { tipo: "multipla", enunciado: "No critério PEPS (FIFO), as saídas do estoque são baixadas pelo custo:", opcoes: ["Dos lotes mais recentes", "Dos lotes mais antigos", "Médio de todo o estoque", "De reposição futuro"], correta: 1 },
+    { tipo: "vf", enunciado: "O critério UEPS (LIFO) é aceito pela legislação fiscal brasileira e pelo CPC 16 / NBC TG 16.", correta: false },
+    { tipo: "multipla", enunciado: "Na Média Ponderada Móvel, o custo unitário do estoque é recalculado:", opcoes: ["A cada saída", "Só no fim do período", "A cada nova entrada", "Nunca é recalculado"], correta: 2 },
+    { tipo: "vf", enunciado: "No sistema, o Controle de Estoque é atualizado automaticamente a partir dos Lançamentos — não existe cadastro manual de movimentação.", correta: true },
+    { tipo: "multipla", enunciado: "Em cenários de preços em alta, qual critério tende a gerar o menor CMV (Custo da Mercadoria Vendida)?", opcoes: ["UEPS", "PEPS", "Os dois geram o mesmo CMV sempre", "Média Ponderada sempre gera o menor"], correta: 1 },
+    { tipo: "multipla", enunciado: "Para uma conta de estoque ser controlada pelo sistema (PEPS/UEPS/MP), ela precisa estar marcada, no Plano de Contas, com a opção:", opcoes: ["Recebe lançamentos", "Controla estoque", "Conta Analítica", "Natureza Devedora"], correta: 1 },
+  ],
+  balancete: [
+    { tipo: "multipla", enunciado: "O Balancete de Verificação serve principalmente para:", opcoes: ["Apurar o lucro do período", "Conferir se o total de débitos bate com o total de créditos", "Substituir a DRE", "Calcular o CMV"], correta: 1 },
+    { tipo: "vf", enunciado: "Se o Balancete mostrar o selo “Divergente”, isso indica que algum lançamento está com valores diferentes entre débito e crédito.", correta: true },
+    { tipo: "multipla", enunciado: "O Balancete de Verificação é:", opcoes: ["Um relatório oficial de divulgação externa", "Uma ferramenta interna de conferência do princípio das partidas dobradas", "Obrigatório apenas para empresas de grande porte", "O mesmo que o Balanço Patrimonial"], correta: 1 },
+    { tipo: "vf", enunciado: "Somente contas com movimento no período aparecem listadas no Balancete.", correta: true },
+    { tipo: "multipla", enunciado: "Se o total de débitos do Balancete for diferente do total de créditos, o próximo passo recomendado é:", opcoes: ["Ignorar e seguir para o Balanço", "Revisar os lançamentos até encontrar a diferença", "Excluir todas as contas", "Recriar a empresa do zero"], correta: 1 },
+  ],
+  dre: [
+    { tipo: "multipla", enunciado: "A DRE parte de qual valor no topo da demonstração?", opcoes: ["Resultado Líquido do Exercício", "Receita Bruta de Vendas e Serviços", "Patrimônio Líquido", "Total do Ativo"], correta: 1 },
+    { tipo: "vf", enunciado: "O Resultado Líquido do Exercício, calculado na DRE, aparece novamente no Balanço Patrimonial, do lado do Passivo + Patrimônio Líquido.", correta: true },
+    { tipo: "multipla", enunciado: "Na DRE, o Custo da Mercadoria Vendida (CMV) é subtraído de qual valor para chegar ao Resultado Bruto?", opcoes: ["Receita Bruta", "Receita Líquida", "Resultado Operacional", "Patrimônio Líquido"], correta: 1 },
+    { tipo: "vf", enunciado: "A DRE é calculada manualmente pelo aluno e precisa ser digitada linha por linha no sistema.", correta: false },
+    { tipo: "multipla", enunciado: "Se a Receita Líquida for R$ 3.500,00 e não houver Custo da Mercadoria Vendida nem despesas, qual será o Resultado Líquido do Exercício?", opcoes: ["R$ 0,00", "R$ 3.500,00", "Depende do Balanço Patrimonial", "Não é possível calcular"], correta: 1 },
+  ],
+};
+
+function AtividadeAvaliativa({ moduloId, moduloLabel, perfil, empresas, notas, salvarNotas, registrarAuditoria }) {
+  const perguntas = BANCO_ATIVIDADES[moduloId] || [];
+  const [respostas, setRespostas] = useState({}); // { [indice]: valor }
+  const [enviado, setEnviado] = useState(false);
+  const [resultado, setResultado] = useState(null); // { acertos, total, nota }
+  const souAluno = perfil?.tipo === "Aluno";
+
+  if (perguntas.length === 0) return null;
+
+  const notaAnterior = souAluno
+    ? (notas || []).find((n) => n.alunoId === perfil.uid && n.moduloId === moduloId)
+    : null;
+
+  const responder = (i, valor) => {
+    if (enviado) return;
+    setRespostas((r) => ({ ...r, [i]: valor }));
+  };
+
+  const corrigir = async () => {
+    let acertos = 0;
+    perguntas.forEach((p, i) => {
+      if (respostas[i] === p.correta) acertos += 1;
+    });
+    const nota = Math.round(((acertos / perguntas.length) * 10) * 10) / 10;
+    setResultado({ acertos, total: perguntas.length, nota });
+    setEnviado(true);
+
+    if (souAluno) {
+      const empresaDoAluno = (empresas || []).find((e) => e.alunoId === perfil.uid);
+      const existente = (notas || []).find((n) => n.alunoId === perfil.uid && n.moduloId === moduloId);
+      let novasNotas;
+      if (existente) {
+        novasNotas = (notas || []).map((n) =>
+          n.id === existente.id ? { ...n, nota, avaliadoPor: "Atividade automática", avaliadoEm: Date.now() } : n
+        );
+      } else {
+        novasNotas = [
+          ...(notas || []),
+          {
+            id: uid("nota"),
+            alunoId: perfil.uid,
+            alunoNome: perfil.nome,
+            turmaId: perfil.turmaId,
+            empresaId: empresaDoAluno?.id || null,
+            moduloId,
+            moduloLabel,
+            nota,
+            avaliadoPor: "Atividade automática",
+            avaliadoEm: Date.now(),
+          },
+        ];
+      }
+      await salvarNotas(novasNotas);
+      if (registrarAuditoria) {
+        await registrarAuditoria(
+          "editar",
+          "sistema",
+          `${perfil.nome} concluiu a atividade avaliativa de "${moduloLabel}" com nota ${nota}`
+        );
+      }
+    }
+  };
+
+  const refazer = () => {
+    setRespostas({});
+    setEnviado(false);
+    setResultado(null);
+  };
+
+  const todasRespondidas = perguntas.every((_, i) => respostas[i] !== undefined);
+
+  return (
+    <div className="mt-8 pt-6 border-t border-line">
+      <h3 className="font-serif font-semibold text-ink text-lg mb-1">Atividade Avaliativa</h3>
+      <p className="text-sm text-inkSoft mb-4">
+        {perguntas.length} questões (múltipla escolha e Verdadeiro/Falso) sobre {moduloLabel.toLowerCase()} —
+        correção automática, nota de 0,0 a 10,0.
+        {!souAluno && " Como você não é Aluno, pode responder só para conferir, sem gravar nota."}
+      </p>
+
+      {souAluno && notaAnterior && !enviado && (
+        <div className="text-sm text-ink bg-green/10 border border-green/30 rounded-lg p-3 mb-4">
+          Você já fez esta atividade e tirou <b>{numFmt(notaAnterior.nota)}</b>. Pode refazer para tentar melhorar —
+          a nota mais recente substitui a anterior.
+        </div>
+      )}
+
+      <div className="space-y-4">
+        {perguntas.map((p, i) => (
+          <Card key={i}>
+            <div className="text-sm font-semibold text-ink mb-2">
+              {i + 1}. {p.enunciado}
+            </div>
+            {p.tipo === "vf" ? (
+              <div className="flex gap-2">
+                {[
+                  { valor: true, label: "Verdadeiro" },
+                  { valor: false, label: "Falso" },
+                ].map((op) => {
+                  const selecionado = respostas[i] === op.valor;
+                  const correta = enviado && op.valor === p.correta;
+                  const errada = enviado && selecionado && op.valor !== p.correta;
+                  return (
+                    <button
+                      key={op.label}
+                      type="button"
+                      disabled={enviado}
+                      onClick={() => responder(i, op.valor)}
+                      className={
+                        "px-4 py-1.5 rounded-lg text-sm font-semibold border transition-colors " +
+                        (correta
+                          ? "bg-green/10 text-green border-green"
+                          : errada
+                          ? "bg-red/10 text-red border-red"
+                          : selecionado
+                          ? "bg-green text-white border-green"
+                          : "border-line text-inkSoft hover:text-ink")
+                      }
+                    >
+                      {op.label}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {p.opcoes.map((op, oi) => {
+                  const selecionado = respostas[i] === oi;
+                  const correta = enviado && oi === p.correta;
+                  const errada = enviado && selecionado && oi !== p.correta;
+                  return (
+                    <button
+                      key={oi}
+                      type="button"
+                      disabled={enviado}
+                      onClick={() => responder(i, oi)}
+                      className={
+                        "w-full text-left px-3 py-1.5 rounded-lg text-sm border transition-colors " +
+                        (correta
+                          ? "bg-green/10 text-green border-green"
+                          : errada
+                          ? "bg-red/10 text-red border-red"
+                          : selecionado
+                          ? "bg-green text-white border-green"
+                          : "border-line text-inkSoft hover:text-ink")
+                      }
+                    >
+                      {op}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </Card>
+        ))}
+      </div>
+
+      <div className="mt-4">
+        {!enviado ? (
+          <Botao onClick={corrigir} disabled={!todasRespondidas}>
+            Corrigir atividade
+          </Botao>
+        ) : (
+          <div className="flex items-center gap-3 flex-wrap">
+            <Card className="inline-block">
+              <div className="text-sm text-ink">
+                Você acertou <b>{resultado.acertos}</b> de <b>{resultado.total}</b> — nota:{" "}
+                <b className={resultado.nota >= 6 ? "text-green" : "text-red"}>{numFmt(resultado.nota)}</b>
+              </div>
+            </Card>
+            <Botao variant="ghost" onClick={refazer}>Refazer</Botao>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function GestaoNotasView({ perfil, turmas, usuarios, empresas, notas, salvarNotas, registrarAuditoria }) {
   const souAluno = perfil?.tipo === "Aluno";
   const [turmaId, setTurmaId] = useState(souAluno ? perfil?.turmaId || "" : (turmas || [])[0]?.id || "");
@@ -5905,6 +6178,9 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
           salvarPlanoContas={salvarPlanoContas}
           auditoria={auditoria}
           registrarAuditoria={registrarAuditoria}
+          empresas={empresas}
+          notas={notas}
+          salvarNotas={salvarNotas}
         />
       )}
       {aba === "saldos" && (
@@ -5954,13 +6230,27 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
             saldos={saldos}
             leaves={leavesAtivas}
             contaByCode={contaByCodeAtivo}
+            perfil={perfil}
+            empresas={empresas}
+            notas={notas}
+            salvarNotas={salvarNotas}
+            registrarAuditoria={registrarAuditoria}
           />
         </>
       )}
       {aba === "dre" && (
         <>
           <SeletorEmpresaAtiva empresas={empresasVisiveis} empresaAtivaId={empresaAtivaId} setEmpresaAtivaId={setEmpresaAtivaId} />
-          <GestaoDREView empresa={empresaAtiva} lancamentos={lancamentos} saldos={saldos} />
+          <GestaoDREView
+            empresa={empresaAtiva}
+            lancamentos={lancamentos}
+            saldos={saldos}
+            perfil={perfil}
+            empresas={empresas}
+            notas={notas}
+            salvarNotas={salvarNotas}
+            registrarAuditoria={registrarAuditoria}
+          />
         </>
       )}
       {aba === "encerramento" && (
@@ -5993,10 +6283,28 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
       {aba === "estoque" && (
         <>
           <SeletorEmpresaAtiva empresas={empresasVisiveis} empresaAtivaId={empresaAtivaId} setEmpresaAtivaId={setEmpresaAtivaId} />
-          <GestaoEstoqueView empresa={empresaAtiva} lancamentos={lancamentos} contaByCode={contaByCodeAtivo} />
+          <GestaoEstoqueView
+            empresa={empresaAtiva}
+            lancamentos={lancamentos}
+            contaByCode={contaByCodeAtivo}
+            perfil={perfil}
+            empresas={empresas}
+            notas={notas}
+            salvarNotas={salvarNotas}
+            registrarAuditoria={registrarAuditoria}
+          />
         </>
       )}
-      {aba === "introducao" && <GestaoIntroducaoView contas={contasAtivas} />}
+      {aba === "introducao" && (
+        <GestaoIntroducaoView
+          contas={contasAtivas}
+          perfil={perfil}
+          empresas={empresas}
+          notas={notas}
+          salvarNotas={salvarNotas}
+          registrarAuditoria={registrarAuditoria}
+        />
+      )}
       {aba === "manual" && <GestaoManualView />}
       {aba === "manual-professor" && perfil?.tipo !== "Aluno" && <GestaoManualProfessorView />}
       {aba === "manual-operacionalizacao" && perfil?.tipo === "Mestre" && <GestaoManualOperacionalizacaoView />}
