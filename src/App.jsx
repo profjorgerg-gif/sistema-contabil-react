@@ -673,12 +673,14 @@ function TelaCompletarAluno({ user, turmas, empresas, salvarEmpresas, onConcluid
   const [matricula, setMatricula] = useState("");
   const [erro, setErro] = useState("");
   const [naoEncontrada, setNaoEncontrada] = useState(false);
+  const [jaVinculada, setJaVinculada] = useState(false);
   const [carregando, setCarregando] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErro("");
     setNaoEncontrada(false);
+    setJaVinculada(false);
     const mat = matricula.trim();
     if (!mat) {
       setErro("Informe sua matrícula.");
@@ -686,6 +688,18 @@ function TelaCompletarAluno({ user, turmas, empresas, salvarEmpresas, onConcluid
     }
     setCarregando(true);
     try {
+      // Cada matrícula só pode estar vinculada a UMA Conta Google. Se algum
+      // outro usuário (uid diferente do atual, que ainda não tem perfil)
+      // já usa essa matrícula, bloqueia — só um Professor/Mestre pode
+      // desfazer esse vínculo (ver módulo Usuários).
+      const todosUsuarios = await listarUsuarios();
+      const conflito = todosUsuarios.find((u) => u.matricula === mat && u.uid !== user.uid);
+      if (conflito) {
+        setJaVinculada(true);
+        setCarregando(false);
+        return;
+      }
+
       let turmaEncontrada = null;
       let nomeEncontrado = null;
       for (const t of turmas || []) {
@@ -759,6 +773,7 @@ function TelaCompletarAluno({ user, turmas, empresas, salvarEmpresas, onConcluid
                 onChange={(e) => {
                   setMatricula(e.target.value);
                   setNaoEncontrada(false);
+                  setJaVinculada(false);
                 }}
                 placeholder="Ex.: 2024001"
               />
@@ -768,6 +783,13 @@ function TelaCompletarAluno({ user, turmas, empresas, salvarEmpresas, onConcluid
               <div className="text-sm text-ink bg-gold/10 border border-gold/40 rounded-lg p-3 mb-3">
                 Não encontramos essa matrícula vinculada a nenhuma turma. Procure seu professor(a) e peça para
                 cadastrá-la antes de tentar entrar de novo.
+              </div>
+            )}
+            {jaVinculada && (
+              <div className="text-sm text-ink bg-red/10 border border-red/40 rounded-lg p-3 mb-3">
+                Essa matrícula já está vinculada a outra Conta Google. Se você tem certeza de que é sua
+                matrícula, procure seu professor(a) ou um Administrador para verificar e, se necessário,
+                refazer o vínculo.
               </div>
             )}
             <Botao type="submit" disabled={carregando} className="w-full justify-center">
@@ -5355,20 +5377,63 @@ const BANCO_ATIVIDADES = {
 
 function AtividadeAvaliativa({ moduloId, moduloLabel, perfil, empresas, notas, salvarNotas, registrarAuditoria }) {
   const perguntas = BANCO_ATIVIDADES[moduloId] || [];
-  const [respostas, setRespostas] = useState({}); // { [indice]: valor }
-  const [enviado, setEnviado] = useState(false);
-  const [resultado, setResultado] = useState(null); // { acertos, total, nota }
+  const [respostas, setRespostas] = useState({});
+  const [modoRecuperacao, setModoRecuperacao] = useState(false);
+  const [resultadoTeste, setResultadoTeste] = useState(null); // só usado por quem não é Aluno (não persiste)
+
   const souAluno = perfil?.tipo === "Aluno";
 
   if (perguntas.length === 0) return null;
 
-  const notaAnterior = souAluno
+  const registro = souAluno
     ? (notas || []).find((n) => n.alunoId === perfil.uid && n.moduloId === moduloId)
     : null;
+  const tentativas = registro?.tentativas || 0;
 
-  const responder = (i, valor) => {
-    if (enviado) return;
-    setRespostas((r) => ({ ...r, [i]: valor }));
+  const responder = (i, valor) => setRespostas((r) => ({ ...r, [i]: valor }));
+  const todasRespondidas = perguntas.every((_, i) => respostas[i] !== undefined);
+
+  const salvarResultado = async (notaObtida, ehRecuperacao) => {
+    const empresaDoAluno = (empresas || []).find((e) => e.alunoId === perfil.uid);
+    let novoRegistro;
+    if (!ehRecuperacao) {
+      novoRegistro = {
+        id: registro?.id || uid("nota"),
+        alunoId: perfil.uid,
+        alunoNome: perfil.nome,
+        turmaId: perfil.turmaId,
+        empresaId: empresaDoAluno?.id || null,
+        moduloId,
+        moduloLabel,
+        notaOriginal: notaObtida,
+        notaRecuperacao: null,
+        nota: notaObtida,
+        tentativas: 1,
+        avaliadoPor: "Atividade automática",
+        avaliadoEm: Date.now(),
+      };
+    } else {
+      const notaFinal = Math.max(registro.notaOriginal, notaObtida);
+      novoRegistro = {
+        ...registro,
+        notaRecuperacao: notaObtida,
+        nota: notaFinal,
+        tentativas: 2,
+        avaliadoPor: "Atividade automática",
+        avaliadoEm: Date.now(),
+      };
+    }
+    const outras = (notas || []).filter((n) => !(n.alunoId === perfil.uid && n.moduloId === moduloId));
+    await salvarNotas([...outras, novoRegistro]);
+    if (registrarAuditoria) {
+      await registrarAuditoria(
+        "editar",
+        "sistema",
+        ehRecuperacao
+          ? `${perfil.nome} fez a Recuperação Paralela de "${moduloLabel}" com nota ${notaObtida} (nota final: ${novoRegistro.nota})`
+          : `${perfil.nome} concluiu a atividade avaliativa de "${moduloLabel}" com nota ${notaObtida}`
+      );
+    }
   };
 
   const corrigir = async () => {
@@ -5376,70 +5441,30 @@ function AtividadeAvaliativa({ moduloId, moduloLabel, perfil, empresas, notas, s
     perguntas.forEach((p, i) => {
       if (respostas[i] === p.correta) acertos += 1;
     });
-    const nota = Math.round(((acertos / perguntas.length) * 10) * 10) / 10;
-    setResultado({ acertos, total: perguntas.length, nota });
-    setEnviado(true);
+    const notaObtida = Math.round((acertos / perguntas.length) * 10 * 10) / 10;
 
     if (souAluno) {
-      const empresaDoAluno = (empresas || []).find((e) => e.alunoId === perfil.uid);
-      const existente = (notas || []).find((n) => n.alunoId === perfil.uid && n.moduloId === moduloId);
-      let novasNotas;
-      if (existente) {
-        novasNotas = (notas || []).map((n) =>
-          n.id === existente.id ? { ...n, nota, avaliadoPor: "Atividade automática", avaliadoEm: Date.now() } : n
-        );
-      } else {
-        novasNotas = [
-          ...(notas || []),
-          {
-            id: uid("nota"),
-            alunoId: perfil.uid,
-            alunoNome: perfil.nome,
-            turmaId: perfil.turmaId,
-            empresaId: empresaDoAluno?.id || null,
-            moduloId,
-            moduloLabel,
-            nota,
-            avaliadoPor: "Atividade automática",
-            avaliadoEm: Date.now(),
-          },
-        ];
-      }
-      await salvarNotas(novasNotas);
-      if (registrarAuditoria) {
-        await registrarAuditoria(
-          "editar",
-          "sistema",
-          `${perfil.nome} concluiu a atividade avaliativa de "${moduloLabel}" com nota ${nota}`
-        );
-      }
+      await salvarResultado(notaObtida, modoRecuperacao);
+      setModoRecuperacao(false);
+      setRespostas({});
+    } else {
+      setResultadoTeste({ acertos, total: perguntas.length, nota: notaObtida });
     }
   };
 
-  const refazer = () => {
-    setRespostas({});
-    setEnviado(false);
-    setResultado(null);
-  };
-
-  const todasRespondidas = perguntas.every((_, i) => respostas[i] !== undefined);
-
-  return (
-    <div className="mt-8 pt-6 border-t border-line">
+  const Cabecalho = () => (
+    <>
       <h3 className="font-serif font-semibold text-ink text-lg mb-1">Atividade Avaliativa</h3>
       <p className="text-sm text-inkSoft mb-4">
         {perguntas.length} questões (múltipla escolha e Verdadeiro/Falso) sobre {moduloLabel.toLowerCase()} —
         correção automática, nota de 0,0 a 10,0.
         {!souAluno && " Como você não é Aluno, pode responder só para conferir, sem gravar nota."}
       </p>
+    </>
+  );
 
-      {souAluno && notaAnterior && !enviado && (
-        <div className="text-sm text-ink bg-green/10 border border-green/30 rounded-lg p-3 mb-4">
-          Você já fez esta atividade e tirou <b>{numFmt(notaAnterior.nota)}</b>. Pode refazer para tentar melhorar —
-          a nota mais recente substitui a anterior.
-        </div>
-      )}
-
+  const Formulario = ({ aoCorrigir, textoBotao }) => (
+    <>
       <div className="space-y-4">
         {perguntas.map((p, i) => (
           <Card key={i}>
@@ -5451,82 +5476,143 @@ function AtividadeAvaliativa({ moduloId, moduloLabel, perfil, empresas, notas, s
                 {[
                   { valor: true, label: "Verdadeiro" },
                   { valor: false, label: "Falso" },
-                ].map((op) => {
-                  const selecionado = respostas[i] === op.valor;
-                  const correta = enviado && op.valor === p.correta;
-                  const errada = enviado && selecionado && op.valor !== p.correta;
-                  return (
-                    <button
-                      key={op.label}
-                      type="button"
-                      disabled={enviado}
-                      onClick={() => responder(i, op.valor)}
-                      className={
-                        "px-4 py-1.5 rounded-lg text-sm font-semibold border transition-colors " +
-                        (correta
-                          ? "bg-green/10 text-green border-green"
-                          : errada
-                          ? "bg-red/10 text-red border-red"
-                          : selecionado
-                          ? "bg-green text-white border-green"
-                          : "border-line text-inkSoft hover:text-ink")
-                      }
-                    >
-                      {op.label}
-                    </button>
-                  );
-                })}
+                ].map((op) => (
+                  <button
+                    key={op.label}
+                    type="button"
+                    onClick={() => responder(i, op.valor)}
+                    className={
+                      "px-4 py-1.5 rounded-lg text-sm font-semibold border transition-colors " +
+                      (respostas[i] === op.valor
+                        ? "bg-green text-white border-green"
+                        : "border-line text-inkSoft hover:text-ink")
+                    }
+                  >
+                    {op.label}
+                  </button>
+                ))}
               </div>
             ) : (
               <div className="space-y-1.5">
-                {p.opcoes.map((op, oi) => {
-                  const selecionado = respostas[i] === oi;
-                  const correta = enviado && oi === p.correta;
-                  const errada = enviado && selecionado && oi !== p.correta;
-                  return (
-                    <button
-                      key={oi}
-                      type="button"
-                      disabled={enviado}
-                      onClick={() => responder(i, oi)}
-                      className={
-                        "w-full text-left px-3 py-1.5 rounded-lg text-sm border transition-colors " +
-                        (correta
-                          ? "bg-green/10 text-green border-green"
-                          : errada
-                          ? "bg-red/10 text-red border-red"
-                          : selecionado
-                          ? "bg-green text-white border-green"
-                          : "border-line text-inkSoft hover:text-ink")
-                      }
-                    >
-                      {op}
-                    </button>
-                  );
-                })}
+                {p.opcoes.map((op, oi) => (
+                  <button
+                    key={oi}
+                    type="button"
+                    onClick={() => responder(i, oi)}
+                    className={
+                      "w-full text-left px-3 py-1.5 rounded-lg text-sm border transition-colors " +
+                      (respostas[i] === oi
+                        ? "bg-green text-white border-green"
+                        : "border-line text-inkSoft hover:text-ink")
+                    }
+                  >
+                    {op}
+                  </button>
+                ))}
               </div>
             )}
           </Card>
         ))}
       </div>
-
       <div className="mt-4">
-        {!enviado ? (
-          <Botao onClick={corrigir} disabled={!todasRespondidas}>
-            Corrigir atividade
-          </Botao>
+        <Botao onClick={aoCorrigir} disabled={!todasRespondidas}>
+          {textoBotao}
+        </Botao>
+      </div>
+    </>
+  );
+
+  // --- Quem não é Aluno: só testa, nunca grava nota, sempre pode refazer localmente. ---
+  if (!souAluno) {
+    return (
+      <div className="mt-8 pt-6 border-t border-line">
+        <Cabecalho />
+        {!resultadoTeste ? (
+          <Formulario aoCorrigir={corrigir} textoBotao="Corrigir atividade" />
         ) : (
           <div className="flex items-center gap-3 flex-wrap">
             <Card className="inline-block">
               <div className="text-sm text-ink">
-                Você acertou <b>{resultado.acertos}</b> de <b>{resultado.total}</b> — nota:{" "}
-                <b className={resultado.nota >= 6 ? "text-green" : "text-red"}>{numFmt(resultado.nota)}</b>
+                Acertos: <b>{resultadoTeste.acertos}</b> de <b>{resultadoTeste.total}</b> — nota:{" "}
+                <b className={resultadoTeste.nota >= 6 ? "text-green" : "text-red"}>{numFmt(resultadoTeste.nota)}</b>
               </div>
             </Card>
-            <Botao variant="ghost" onClick={refazer}>Refazer</Botao>
+            <Botao
+              variant="ghost"
+              onClick={() => {
+                setRespostas({});
+                setResultadoTeste(null);
+              }}
+            >
+              Testar de novo
+            </Botao>
           </div>
         )}
       </div>
+    );
+  }
+
+  // --- Aluno, tentativas === 2: já usou a atividade original + a recuperação. Travado. ---
+  if (tentativas >= 2) {
+    return (
+      <div className="mt-8 pt-6 border-t border-line">
+        <Cabecalho />
+        <Card>
+          <div className="text-sm text-ink space-y-1.5">
+            <div>Nota da atividade original: <b>{numFmt(registro.notaOriginal)}</b></div>
+            <div>Nota da Recuperação Paralela: <b>{numFmt(registro.notaRecuperacao)}</b></div>
+            <div className="pt-1.5 border-t border-line mt-1">
+              Nota final (prevalece a maior):{" "}
+              <b className={registro.nota >= 6 ? "text-green" : "text-red"}>{numFmt(registro.nota)}</b>
+            </div>
+          </div>
+        </Card>
+        <p className="text-xs text-inkSoft mt-2">
+          Você já usou as duas tentativas permitidas para este módulo (atividade original + Recuperação
+          Paralela).
+        </p>
+      </div>
+    );
+  }
+
+  // --- Aluno, tentativas === 1, ainda não entrou no modo recuperação: mostra a nota e o botão. ---
+  if (tentativas === 1 && !modoRecuperacao) {
+    return (
+      <div className="mt-8 pt-6 border-t border-line">
+        <Cabecalho />
+        <Card className="mb-3">
+          <div className="text-sm text-ink">
+            Nota da atividade original:{" "}
+            <b className={registro.notaOriginal >= 6 ? "text-green" : "text-red"}>{numFmt(registro.notaOriginal)}</b>
+          </div>
+        </Card>
+        <Botao
+          onClick={() => {
+            setRespostas({});
+            setModoRecuperacao(true);
+          }}
+        >
+          Fazer Recuperação Paralela
+        </Botao>
+        <p className="text-xs text-inkSoft mt-2">
+          Você terá direito a uma única tentativa adicional. Prevalece sempre a maior nota entre a atividade
+          original e a Recuperação Paralela — não existirá nova tentativa depois desta.
+        </p>
+      </div>
+    );
+  }
+
+  // --- Aluno respondendo agora: primeira tentativa (tentativas === 0) ou recuperação (modoRecuperacao). ---
+  return (
+    <div className="mt-8 pt-6 border-t border-line">
+      <Cabecalho />
+      {modoRecuperacao && (
+        <div className="text-sm text-ink bg-gold/10 border border-gold/40 rounded-lg p-3 mb-4">
+          Você está fazendo a <b>Recuperação Paralela</b> — sua nota original ({numFmt(registro.notaOriginal)})
+          fica guardada, e a nota final será a maior entre as duas.
+        </div>
+      )}
+      <Formulario aoCorrigir={corrigir} textoBotao={modoRecuperacao ? "Enviar Recuperação Paralela" : "Corrigir atividade"} />
     </div>
   );
 }
