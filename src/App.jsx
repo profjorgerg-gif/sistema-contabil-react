@@ -4,7 +4,7 @@ import {
   ClipboardList, FileBarChart, ScrollText, History, Save, Eye, EyeOff,
   Crown, UserCheck, UserX, Pencil, Trash2, Plus, ShieldCheck, Wallet,
   Landmark, GraduationCap, Layers, Package, ChevronLeft, Download, ExternalLink,
-  LifeBuoy, Printer, Upload,
+  LifeBuoy, Printer, Upload, Star,
 } from "lucide-react";
 import {
   observarSessao, entrarComGoogle, sair, traduzErroAuth, CODIGO_MESTRE,
@@ -91,7 +91,21 @@ const ITENS_SO_MESTRE = ["manual-operacionalizacao", "checklist-dev"];
 // Itens visíveis para todo mundo (Aluno, Professor, Mestre), fora do ciclo
 // contábil e da gestão administrativa.
 const OUTROS_ITENS = [
+  { id: "notas", label: "Notas", icon: Star },
   { id: "suporte", label: "Suporte", icon: LifeBuoy },
+];
+
+// Módulos do ciclo contábil que podem receber nota do professor(a) — usados
+// no módulo de Notas (avaliação por atividade/módulo).
+const MODULOS_AVALIAVEIS = [
+  { id: "plano-contas", label: "Plano de Contas" },
+  { id: "saldos", label: "Saldos Iniciais" },
+  { id: "lancamentos", label: "Lançamentos" },
+  { id: "estoque", label: "Controle de Estoque" },
+  { id: "balancete", label: "Balancete" },
+  { id: "dre", label: "DRE" },
+  { id: "encerramento", label: "Encerramento" },
+  { id: "balanco", label: "Balanço Patrimonial" },
 ];
 
 // ============================================================================
@@ -655,7 +669,7 @@ function TelaCompletarProfessor({ user, onConcluido }) {
 // (cadastrado antes pelo professor — ver GestaoTurmasView). Se achar, o
 // cadastro já entra aprovado (o professor já vinculou/autorizou ao registrar
 // a matrícula). Se não achar, orienta a procurar o professor.
-function TelaCompletarAluno({ user, turmas, onConcluido }) {
+function TelaCompletarAluno({ user, turmas, empresas, salvarEmpresas, onConcluido }) {
   const [matricula, setMatricula] = useState("");
   const [erro, setErro] = useState("");
   const [naoEncontrada, setNaoEncontrada] = useState(false);
@@ -687,9 +701,10 @@ function TelaCompletarAluno({ user, turmas, onConcluido }) {
         setCarregando(false);
         return;
       }
+      const nomeFinal = nomeEncontrado || user.displayName || user.email;
       const perfil = {
         uid: user.uid,
-        nome: nomeEncontrado || user.displayName || user.email,
+        nome: nomeFinal,
         email: user.email,
         tipo: "Aluno",
         matricula: mat,
@@ -699,6 +714,25 @@ function TelaCompletarAluno({ user, turmas, onConcluido }) {
         criadoEm: Date.now(),
       };
       await salvarUsuario(perfil);
+
+      // Empresa individual criada automaticamente no primeiro acesso — só o
+      // nome vem preenchido ("Nome Completo LTDA"); o resto fica em branco
+      // para o próprio aluno preencher junto com as atividades da turma.
+      const jaTemEmpresa = (empresas || []).some((em) => em.alunoId === user.uid);
+      if (!jaTemEmpresa) {
+        const novaEmpresa = {
+          id: uid("emp"),
+          nome: `${nomeFinal} LTDA`,
+          cnpj: "",
+          atividade: "",
+          responsavel: "",
+          alunoId: user.uid,
+          turmaId: turmaEncontrada.id,
+          criadoEm: Date.now(),
+        };
+        await salvarEmpresas([...(empresas || []), novaEmpresa]);
+      }
+
       sessionStorage.removeItem("perfilPretendido");
       onConcluido();
     } catch {
@@ -751,12 +785,20 @@ function TelaCompletarAluno({ user, turmas, onConcluido }) {
 
 // Router do primeiro login — decide entre a tela de Professor ou de Aluno
 // conforme o que a pessoa escolheu na TelaLogin (guardado em sessionStorage).
-function TelaCompletarCadastroGoogle({ user, turmas, onConcluido }) {
+function TelaCompletarCadastroGoogle({ user, turmas, empresas, salvarEmpresas, onConcluido }) {
   const perfilPretendido = sessionStorage.getItem("perfilPretendido") || "Aluno";
   if (perfilPretendido === "Professor") {
     return <TelaCompletarProfessor user={user} onConcluido={onConcluido} />;
   }
-  return <TelaCompletarAluno user={user} turmas={turmas} onConcluido={onConcluido} />;
+  return (
+    <TelaCompletarAluno
+      user={user}
+      turmas={turmas}
+      empresas={empresas}
+      salvarEmpresas={salvarEmpresas}
+      onConcluido={onConcluido}
+    />
+  );
 }
 
 // Gate de acesso administrativo — pedido a CADA entrada de um usuário Mestre
@@ -1142,13 +1184,16 @@ function parsearAlunosDoTexto(texto) {
   return resultado;
 }
 
-function GestaoTurmasView({ perfil, turmas, salvarTurmas, recarregarTurmas, usuarios, recarregarUsuarios, registrarAuditoria }) {
+function GestaoTurmasView({ perfil, turmas, salvarTurmas, recarregarTurmas, usuarios, empresas, recarregarUsuarios, registrarAuditoria }) {
   const [novoNome, setNovoNome] = useState("");
   const [editandoId, setEditandoId] = useState(null);
   const [nomeEdicao, setNomeEdicao] = useState("");
   const [turmaExpandida, setTurmaExpandida] = useState(null);
   const [novoAlunoNome, setNovoAlunoNome] = useState("");
   const [novoAlunoMatricula, setNovoAlunoMatricula] = useState("");
+  const [editandoAlunoMatricula, setEditandoAlunoMatricula] = useState(null);
+  const [edicaoAlunoNome, setEdicaoAlunoNome] = useState("");
+  const [edicaoAlunoMatricula, setEdicaoAlunoMatricula] = useState("");
   const [importando, setImportando] = useState(false);
   const [erroImportacao, setErroImportacao] = useState("");
   const [preVisualizacao, setPreVisualizacao] = useState(null); // { turmaId, alunos: [{nome, matricula}] }
@@ -1252,6 +1297,43 @@ function GestaoTurmasView({ perfil, turmas, salvarTurmas, recarregarTurmas, usua
       )
     );
     await registrarAuditoria("editar", "turma", `Removeu aluno esperado "${registro.nome}" da turma "${turma.nome}"`);
+  };
+
+  const iniciarEdicaoAluno = (registro) => {
+    setEditandoAlunoMatricula(registro.matricula);
+    setEdicaoAlunoNome(registro.nome);
+    setEdicaoAlunoMatricula(registro.matricula);
+  };
+
+  const salvarEdicaoAluno = async (turma, matriculaOriginal) => {
+    const novoNomeAluno = edicaoAlunoNome.trim();
+    const novaMatricula = edicaoAlunoMatricula.trim();
+    if (!novoNomeAluno || !novaMatricula) return;
+    if (
+      novaMatricula !== matriculaOriginal &&
+      (turmas || []).some((t) => (t.alunosEsperados || []).some((a) => a.matricula === novaMatricula))
+    ) {
+      alert("Essa matrícula já está cadastrada em alguma turma.");
+      return;
+    }
+    await salvarTurmas(
+      (turmas || []).map((t) =>
+        t.id === turma.id
+          ? {
+              ...t,
+              alunosEsperados: (t.alunosEsperados || []).map((a) =>
+                a.matricula === matriculaOriginal ? { nome: novoNomeAluno, matricula: novaMatricula } : a
+              ),
+            }
+          : t
+      )
+    );
+    await registrarAuditoria(
+      "editar",
+      "turma",
+      `Editou aluno esperado na turma "${turma.nome}": "${novoNomeAluno}" (matrícula ${novaMatricula})`
+    );
+    setEditandoAlunoMatricula(null);
   };
 
   const excluir = async (turma) => {
@@ -1448,16 +1530,44 @@ function GestaoTurmasView({ perfil, turmas, salvarTurmas, recarregarTurmas, usua
                     <div className="text-sm text-inkSoft italic">Nenhum aluno esperado cadastrado ainda.</div>
                   ) : (
                     <div className="space-y-1">
-                      {(t.alunosEsperados || []).map((a) => (
-                        <div key={a.matricula} className="flex items-center justify-between text-sm bg-paper rounded-lg px-3 py-1.5">
-                          <span>
-                            {a.nome} <span className="text-inkSoft font-mono text-xs">— {a.matricula}</span>
-                          </span>
-                          <button onClick={() => removerAlunoEsperado(t, a)} className="text-red hover:opacity-70" title="Remover">
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      ))}
+                      {(t.alunosEsperados || []).map((a) => {
+                        const usuarioVinculado = (usuarios || []).find((u) => u.matricula === a.matricula);
+                        const jaAcessou = !!usuarioVinculado;
+                        const empresaCriada = usuarioVinculado
+                          ? (empresas || []).some((em) => em.alunoId === usuarioVinculado.uid)
+                          : false;
+                        const editando = editandoAlunoMatricula === a.matricula;
+                        return (
+                          <div key={a.matricula} className="bg-paper rounded-lg px-3 py-1.5">
+                            {editando ? (
+                              <div className="flex flex-col sm:flex-row gap-2">
+                                <TxtInput value={edicaoAlunoNome} onChange={(e) => setEdicaoAlunoNome(e.target.value)} placeholder="Nome completo" />
+                                <TxtInput value={edicaoAlunoMatricula} onChange={(e) => setEdicaoAlunoMatricula(e.target.value)} placeholder="Matrícula" />
+                                <div className="flex gap-2 shrink-0">
+                                  <Botao onClick={() => salvarEdicaoAluno(t, a.matricula)}>Salvar</Botao>
+                                  <Botao variant="ghost" onClick={() => setEditandoAlunoMatricula(null)}>Cancelar</Botao>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <span className="text-sm">
+                                  {a.nome} <span className="text-inkSoft font-mono text-xs">— {a.matricula}</span>
+                                </span>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <Pill tone={jaAcessou ? "green" : "default"}>{jaAcessou ? "Já acessou" : "Ainda não acessou"}</Pill>
+                                  <Pill tone={empresaCriada ? "green" : "default"}>{empresaCriada ? "Empresa criada" : "Sem empresa"}</Pill>
+                                  <button onClick={() => iniciarEdicaoAluno(a)} className="text-inkSoft hover:text-ink" title="Editar">
+                                    <Pencil size={14} />
+                                  </button>
+                                  <button onClick={() => removerAlunoEsperado(t, a)} className="text-red hover:opacity-70" title="Remover">
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -4176,33 +4286,34 @@ function ManualProfEmpresas() {
     <div>
       <h3 className="font-serif font-semibold text-ink text-lg mb-1">Gestão de Empresas</h3>
       <p className="text-sm text-inkSoft mb-4">
-        Cada empresa fictícia é vinculada a <b>um aluno específico</b> — é essa empresa que ele vai
-        usar em Lançamentos, Saldos, Relatórios etc.
+        Desde a Fase 6, a empresa de cada aluno é criada <b>automaticamente</b> no primeiro
+        acesso — não é mais preciso cadastrá-la manualmente. Este módulo agora serve para
+        <b> consultar e ajustar</b> os dados depois.
       </p>
       <TabelaIlustrada
-        legenda="Campos do formulário de cadastro de empresa"
+        legenda="O que acontece automaticamente no primeiro login do aluno"
         colunas={["Campo", "Preenchimento"]}
         badgeColuna={0}
         linhas={[
-          ["Nome da empresa", "Ex.: Comércio Exemplo Ltda"],
-          ["CNPJ (fictício)", "Botão \"Gerar\" cria um CNPJ válido só para prática"],
-          ["Atividade", "Ex.: Comércio varejista"],
-          ["Aluno responsável", "Escolha na lista de alunos já aprovados"],
+          ["Nome da empresa", '"Nome Completo do Aluno" + " LTDA" (automático)'],
+          ["CNPJ", "Fica em branco — o aluno preenche depois, se a atividade pedir"],
+          ["Atividade", "Fica em branco — o aluno preenche"],
+          ["Aluno responsável", "Já vem vinculado automaticamente"],
         ]}
       />
       <Card className="mb-4">
-        <PassoManual n={1} titulo="Cadastrar a empresa">
-          Preencha nome, CNPJ (ou gere automaticamente) e atividade. O campo "Responsável" é
-          texto livre — não confundir com "Aluno responsável", que é o vínculo de verdade.
+        <PassoManual n={1} titulo="Criação automática">
+          Quando um aluno faz o primeiro login e a matrícula é reconhecida (ver Turmas), o
+          sistema já cria a empresa dele sozinho, com o nome "Nome Completo LTDA" — os demais
+          campos ficam em branco.
         </PassoManual>
-        <PassoManual n={2} titulo="Vincular ao aluno">
-          No campo <b>"Aluno responsável"</b>, escolha o aluno na lista. Só quem já se
-          cadastrou e foi aprovado aparece aqui. Sem esse vínculo, a empresa fica
-          "— ainda não vinculada —" e nenhum aluno consegue selecioná-la como empresa ativa.
+        <PassoManual n={2} titulo="Editar depois, se precisar">
+          Clique no lápis a qualquer momento para corrigir o CNPJ, a atividade, ou reatribuir a
+          empresa a outro aluno — útil em casos excepcionais.
         </PassoManual>
-        <PassoManual n={3} titulo="Editar ou trocar o aluno vinculado">
-          Clique no lápis a qualquer momento para reatribuir a empresa a outro aluno, corrigir o
-          CNPJ ou a atividade.
+        <PassoManual n={3} titulo="Cadastro manual (casos especiais)">
+          O formulário de cadastro continua disponível para criar uma empresa avulsa (ex.:
+          empresa de demonstração, sem aluno vinculado).
         </PassoManual>
       </Card>
       <div className="text-xs text-inkSoft">
@@ -5041,6 +5152,166 @@ function GestaoBackupView({ perfil, turmas, empresas, usuarios, auditoria, regis
 }
 
 // ============================================================================
+// NOTAS — avaliação do professor(a) por módulo do ciclo contábil, por aluno.
+// Lista compartilhada (kv: "notas"); Professor/Mestre lançam, Aluno só vê as
+// próprias. Média calculada automaticamente a partir dos módulos avaliados.
+// ============================================================================
+
+function GestaoNotasView({ perfil, turmas, usuarios, empresas, notas, salvarNotas, registrarAuditoria }) {
+  const souAluno = perfil?.tipo === "Aluno";
+  const [turmaId, setTurmaId] = useState(souAluno ? perfil?.turmaId || "" : (turmas || [])[0]?.id || "");
+  const [editando, setEditando] = useState(null); // `${alunoUid}__${moduloId}`
+  const [valorEdicao, setValorEdicao] = useState("");
+
+  const alunosDaTurma = (usuarios || []).filter((u) => u.tipo === "Aluno" && u.turmaId === turmaId);
+  const alunosVisiveis = souAluno ? alunosDaTurma.filter((a) => a.uid === perfil.uid) : alunosDaTurma;
+
+  const notaDe = (alunoUid, moduloId) => (notas || []).find((n) => n.alunoId === alunoUid && n.moduloId === moduloId);
+
+  const mediaDoAluno = (alunoUid) => {
+    const encontradas = MODULOS_AVALIAVEIS.map((m) => notaDe(alunoUid, m.id)).filter(Boolean);
+    if (encontradas.length === 0) return null;
+    return encontradas.reduce((s, n) => s + Number(n.nota), 0) / encontradas.length;
+  };
+
+  const salvarNota = async (aluno, modulo) => {
+    const chave = `${aluno.uid}__${modulo.id}`;
+    const v = valorEdicao.trim().replace(",", ".");
+    if (v === "") {
+      setEditando(null);
+      return;
+    }
+    const num = Number(v);
+    if (Number.isNaN(num) || num < 0 || num > 10) {
+      alert("A nota deve ser um número entre 0 e 10.");
+      return;
+    }
+    const existente = notaDe(aluno.uid, modulo.id);
+    const empresaDoAluno = (empresas || []).find((e) => e.alunoId === aluno.uid);
+    let novasNotas;
+    if (existente) {
+      novasNotas = (notas || []).map((n) =>
+        n.id === existente.id ? { ...n, nota: num, avaliadoPor: perfil.nome, avaliadoEm: Date.now() } : n
+      );
+    } else {
+      novasNotas = [
+        ...(notas || []),
+        {
+          id: uid("nota"),
+          alunoId: aluno.uid,
+          alunoNome: aluno.nome,
+          turmaId: aluno.turmaId,
+          empresaId: empresaDoAluno?.id || null,
+          moduloId: modulo.id,
+          moduloLabel: modulo.label,
+          nota: num,
+          avaliadoPor: perfil.nome,
+          avaliadoEm: Date.now(),
+        },
+      ];
+    }
+    await salvarNotas(novasNotas);
+    await registrarAuditoria("editar", "sistema", `Lançou nota ${num} para ${aluno.nome} em "${modulo.label}"`);
+    setEditando(null);
+  };
+
+  return (
+    <div>
+      <h2 className="text-lg font-serif font-semibold text-ink mb-1">Notas</h2>
+      <p className="text-sm text-inkSoft mb-4">
+        {souAluno
+          ? "Suas notas por módulo do ciclo contábil, lançadas pelo professor(a), e a média geral."
+          : "Clique numa nota para editar — dê Enter ou clique fora para salvar. A média é calculada automaticamente pelos módulos já avaliados."}
+      </p>
+
+      {!souAluno && (
+        <div className="max-w-xs mb-4">
+          <Field label="Turma">
+            <SelectInput value={turmaId} onChange={(e) => setTurmaId(e.target.value)}>
+              <option value="">— Selecione —</option>
+              {(turmas || []).map((t) => (
+                <option key={t.id} value={t.id}>{t.nome}</option>
+              ))}
+            </SelectInput>
+          </Field>
+        </div>
+      )}
+
+      {alunosVisiveis.length === 0 ? (
+        <div className="text-sm text-inkSoft italic">
+          {souAluno ? "Nenhuma nota lançada ainda." : "Nenhum aluno nesta turma ainda."}
+        </div>
+      ) : (
+        <Card className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs text-inkSoft border-b border-line">
+                <th className="py-2 pr-3 whitespace-nowrap">Aluno</th>
+                {MODULOS_AVALIAVEIS.map((m) => (
+                  <th key={m.id} className="py-2 px-2 text-center whitespace-nowrap">{m.label}</th>
+                ))}
+                <th className="py-2 pl-3 text-center whitespace-nowrap">Média</th>
+              </tr>
+            </thead>
+            <tbody>
+              {alunosVisiveis.map((aluno) => {
+                const media = mediaDoAluno(aluno.uid);
+                return (
+                  <tr key={aluno.uid} className="border-b border-line/50">
+                    <td className="py-1.5 pr-3 whitespace-nowrap font-semibold text-ink">{aluno.nome}</td>
+                    {MODULOS_AVALIAVEIS.map((modulo) => {
+                      const chave = `${aluno.uid}__${modulo.id}`;
+                      const n = notaDe(aluno.uid, modulo.id);
+                      const podeEditar = !souAluno;
+                      return (
+                        <td key={modulo.id} className="py-1.5 px-2 text-center">
+                          {editando === chave ? (
+                            <input
+                              autoFocus
+                              className="w-14 border border-line rounded px-1 py-0.5 text-center text-xs"
+                              value={valorEdicao}
+                              onChange={(e) => setValorEdicao(e.target.value)}
+                              onBlur={() => salvarNota(aluno, modulo)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") salvarNota(aluno, modulo);
+                                if (e.key === "Escape") setEditando(null);
+                              }}
+                            />
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={!podeEditar}
+                              onClick={() => {
+                                setEditando(chave);
+                                setValorEdicao(n ? String(n.nota) : "");
+                              }}
+                              className={
+                                "w-10 py-0.5 rounded text-xs font-semibold " +
+                                (n ? "bg-green/10 text-green" : "bg-paper text-inkSoft") +
+                                (podeEditar ? " hover:opacity-70 cursor-pointer" : " cursor-default")
+                              }
+                            >
+                              {n ? numFmt(n.nota) : "—"}
+                            </button>
+                          )}
+                        </td>
+                      );
+                    })}
+                    <td className="py-1.5 pl-3 text-center font-semibold text-ink">
+                      {media !== null ? numFmt(media) : "—"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
 // SUPORTE — chamados "Sistema" (para um Usuário Mestre) e "Suporte Pedagógico"
 // (para o Professor). Lista compartilhada (kv: "chamados"), com status
 // controlado por Mestre/Professor; Aluno só vê e abre os próprios chamados.
@@ -5502,6 +5773,7 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
 
   const [auditoria, salvarAuditoria] = useSharedList("auditoria", []);
   const [chamados, salvarChamados] = useSharedList("chamados", []);
+  const [notas, salvarNotas] = useSharedList("notas", []);
   const registrarAuditoria = useCallback(
     async (acao, entidade, descricao) => {
       const entrada = {
@@ -5551,6 +5823,7 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
           salvarTurmas={salvarTurmas}
           recarregarTurmas={recarregarTurmas}
           usuarios={usuarios}
+          empresas={empresas}
           recarregarUsuarios={recarregarUsuarios}
           registrarAuditoria={registrarAuditoria}
         />
@@ -5695,6 +5968,17 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
           registrarAuditoria={registrarAuditoria}
         />
       )}
+      {aba === "notas" && (
+        <GestaoNotasView
+          perfil={perfil}
+          turmas={turmas}
+          usuarios={usuarios}
+          empresas={empresas}
+          notas={notas}
+          salvarNotas={salvarNotas}
+          registrarAuditoria={registrarAuditoria}
+        />
+      )}
       {aba === "suporte" && (
         <GestaoSuporteView
           perfil={perfil}
@@ -5711,6 +5995,7 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
 export default function App() {
   const [user, setUser] = useState(undefined);
   const [turmas] = useSharedList("turmas");
+  const [empresas, salvarEmpresas] = useSharedList("empresas");
   const [perfil, recarregarPerfil] = useUsuario(user?.uid);
   // Acesso Mestre é revalidado a cada entrada — nunca fica salvo entre sessões.
   const [mestreDesbloqueado, setMestreDesbloqueado] = useState(false);
@@ -5730,7 +6015,15 @@ export default function App() {
   if (perfil === undefined) return <LoadingScreen texto="Carregando seu perfil…" />;
 
   if (perfil === null) {
-    return <TelaCompletarCadastroGoogle user={user} turmas={turmas} onConcluido={recarregarPerfil} />;
+    return (
+      <TelaCompletarCadastroGoogle
+        user={user}
+        turmas={turmas}
+        empresas={empresas}
+        salvarEmpresas={salvarEmpresas}
+        onConcluido={recarregarPerfil}
+      />
+    );
   }
 
   if (!perfil.aprovado) return <TelaAguardandoAprovacao perfil={perfil} />;
