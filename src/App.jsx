@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, Component } from "react";
 import {
   Menu, X, LogOut, School, Users, Building2, LayoutDashboard, BookOpen,
   ClipboardList, FileBarChart, ScrollText, History, Save, Eye, EyeOff,
@@ -6528,7 +6528,7 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
   );
 }
 
-export default function App() {
+function AppInterno() {
   const [user, setUser] = useState(undefined);
   const [turmas, , recarregarTurmasApp] = useSharedList("turmas");
   const [empresas, salvarEmpresas, recarregarEmpresasApp] = useSharedList("empresas");
@@ -6588,4 +6588,54 @@ export default function App() {
   }
 
   return <Dashboard user={user} perfil={perfil} recarregarPerfil={recarregarPerfil} />;
+}
+
+// Rede de segurança: se qualquer tela do sistema quebrar por um erro
+// inesperado, mostra uma mensagem com opção de recarregar — em vez da
+// página ficar completamente em branco, sem nenhuma pista do que houve.
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { temErro: false, erro: null };
+  }
+
+  static getDerivedStateFromError(erro) {
+    return { temErro: true, erro };
+  }
+
+  componentDidCatch(erro, infoComponente) {
+    console.error("Erro capturado pelo sistema:", erro, infoComponente);
+  }
+
+  render() {
+    if (this.state.temErro) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-paper px-4">
+          <div className="max-w-md text-center">
+            <img src={LOGO_CEDUP} alt="CEDUP Hermann Hering" className="w-16 h-16 mx-auto mb-4 rounded-lg" />
+            <h1 className="text-lg font-serif font-semibold text-ink mb-2">Algo deu errado</h1>
+            <p className="text-sm text-inkSoft mb-4">
+              Aconteceu um erro inesperado nesta tela. Tente recarregar a página — se acontecer de novo,
+              tire um print desta mensagem (com o texto técnico abaixo) e avise um Administrador.
+            </p>
+            <Botao onClick={() => window.location.reload()}>Recarregar página</Botao>
+            {this.state.erro && (
+              <pre className="text-xs text-left text-red bg-red/5 border border-red/20 rounded-lg p-3 mt-4 overflow-auto max-h-48 whitespace-pre-wrap">
+                {String(this.state.erro?.message || this.state.erro)}
+              </pre>
+            )}
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+export default function App() {
+  return (
+    <ErrorBoundary>
+      <AppInterno />
+    </ErrorBoundary>
+  );
 }
