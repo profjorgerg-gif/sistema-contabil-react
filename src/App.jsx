@@ -843,6 +843,57 @@ function TelaSenhaMestre({ onDesbloquear }) {
   );
 }
 
+// Confirmação de matrícula a cada entrada do Aluno — igual em espírito à
+// senha mestre do Mestre: reforça a segurança e confirma a identidade,
+// mesmo que a conta Google já esteja autenticada. Nunca fica salva entre
+// sessões (chamado de suporte "Login + matrícula").
+function TelaConfirmarMatricula({ perfil, onDesbloquear }) {
+  const [matricula, setMatricula] = useState("");
+  const [erro, setErro] = useState("");
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (matricula.trim() === perfil.matricula) {
+      onDesbloquear();
+    } else {
+      setErro("Matrícula incorreta. Confira e tente de novo.");
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-paper px-4">
+      <div className="w-full max-w-sm">
+        <div className="text-center mb-6">
+          <img src={LOGO_CEDUP} alt="CEDUP Hermann Hering" className="w-16 h-16 mx-auto mb-3 rounded-lg" />
+          <h1 className="text-xl font-serif font-semibold text-ink">Confirme sua matrícula</h1>
+          <p className="text-xs text-inkSoft mt-1">
+            Olá, {perfil.nome} — por segurança, confirme sua matrícula a cada entrada.
+          </p>
+        </div>
+        <Card>
+          <form onSubmit={handleSubmit}>
+            <Field label="Matrícula">
+              <TxtInput
+                required
+                value={matricula}
+                onChange={(e) => setMatricula(e.target.value)}
+                placeholder="Ex.: 2024001"
+              />
+            </Field>
+            {erro && <div className="text-sm text-red mb-3">{erro}</div>}
+            <Botao type="submit" className="w-full justify-center">
+              Confirmar
+            </Botao>
+          </form>
+        </Card>
+        <button onClick={sair} className="text-sm text-inkSoft underline block mt-4 mx-auto">
+          Sair
+        </button>
+      </div>
+    </div>
+  );
+}
+
 
 function TelaAguardandoAprovacao({ perfil }) {
   return (
@@ -3947,6 +3998,12 @@ function ManualAcesso() {
       </p>
       <IlustracaoCadastro />
 
+      <div className="text-sm text-inkSoft bg-gold/10 border border-gold/40 rounded-lg p-3 mb-4">
+        <b>A partir do segundo acesso:</b> mesmo já logado pelo Google, o sistema pede a matrícula de novo a
+        cada entrada — é uma confirmação extra de identidade, igual à senha mestre do Mestre. Não fica salva
+        entre sessões.
+      </div>
+
       <h4 className="font-semibold text-ink text-sm mb-1">Primeiro login — Professor(a)</h4>
       <div className="text-sm text-inkSoft bg-gold/10 border border-gold/40 rounded-lg p-3 mb-4">
         Depois do Google, é pedido um <b>Código de Mestre</b> (opcional — só preencha se um Usuário Mestre te
@@ -5648,6 +5705,7 @@ function GestaoSuporteView({ perfil, chamados, salvarChamados, registrarAuditori
   const [assunto, setAssunto] = useState("");
   const [descricao, setDescricao] = useState("");
   const [erro, setErro] = useState("");
+  const [selecionados, setSelecionados] = useState(null); // null = "todos selecionados" (ainda não mexeu)
 
   const souAluno = perfil?.tipo === "Aluno";
   const podeGerenciarStatus = perfil?.tipo === "Mestre" || perfil?.tipo === "Professor";
@@ -5657,6 +5715,18 @@ function GestaoSuporteView({ perfil, chamados, salvarChamados, registrarAuditori
   const listaFiltrada =
     !souAluno && filtroStatus !== "Todos" ? listaVisivel.filter((c) => c.status === filtroStatus) : listaVisivel;
   const ordenada = [...listaFiltrada].sort((a, b) => b.criadoEm - a.criadoEm);
+
+  const estaSelecionado = (id) => selecionados === null || selecionados.has(id);
+  const alternarSelecao = (id) => {
+    setSelecionados((atual) => {
+      const base = atual === null ? new Set(ordenada.map((c) => c.id)) : new Set(atual);
+      if (base.has(id)) base.delete(id);
+      else base.add(id);
+      return base;
+    });
+  };
+  const selecionarTodos = () => setSelecionados(new Set(ordenada.map((c) => c.id)));
+  const limparSelecao = () => setSelecionados(new Set());
 
   const abrirChamado = async (e) => {
     e.preventDefault();
@@ -5725,7 +5795,7 @@ function GestaoSuporteView({ perfil, chamados, salvarChamados, registrarAuditori
       </div>
 
       {!souAluno && (
-        <div className="flex flex-wrap items-center gap-2 mb-4">
+        <div className="flex flex-wrap items-center gap-2 mb-2">
           {["Todos", ...STATUS_CHAMADO_OPCOES].map((s) => (
             <button
               key={s}
@@ -5742,6 +5812,20 @@ function GestaoSuporteView({ perfil, chamados, salvarChamados, registrarAuditori
           <Botao variant="ghost" onClick={() => window.print()}>
             <Printer size={16} /> Imprimir / Salvar PDF
           </Botao>
+        </div>
+      )}
+      {!souAluno && ordenada.length > 0 && (
+        <div className="flex items-center gap-3 mb-4 text-xs text-inkSoft">
+          <span>
+            {ordenada.filter((c) => estaSelecionado(c.id)).length} de {ordenada.length} selecionado(s) para
+            impressão/PDF
+          </span>
+          <button onClick={selecionarTodos} className="text-green underline decoration-dotted hover:opacity-70">
+            Selecionar todos
+          </button>
+          <button onClick={limparSelecao} className="text-green underline decoration-dotted hover:opacity-70">
+            Limpar seleção
+          </button>
         </div>
       )}
 
@@ -5780,30 +5864,44 @@ function GestaoSuporteView({ perfil, chamados, salvarChamados, registrarAuditori
       )}
 
       <div className="space-y-2">
-        {ordenada.map((c) => (
-          <Card key={c.id}>
-            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-              <div>
-                <div className="font-semibold text-ink text-sm">{c.assunto}</div>
-                <div className="text-xs text-inkSoft">
-                  {c.autorNome} ({c.autorTipo}) · {fmtDateTime(c.criadoEm)}
+        {ordenada.map((c) => {
+          const selecionado = estaSelecionado(c.id);
+          return (
+            <Card key={c.id} className={selecionado ? "" : "print:hidden"}>
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  {!souAluno && (
+                    <input
+                      type="checkbox"
+                      checked={selecionado}
+                      onChange={() => alternarSelecao(c.id)}
+                      className="mt-1 print:hidden"
+                      title="Incluir na impressão/PDF"
+                    />
+                  )}
+                  <div>
+                    <div className="font-semibold text-ink text-sm">{c.assunto}</div>
+                    <div className="text-xs text-inkSoft">
+                      {c.autorNome} ({c.autorTipo}) · {fmtDateTime(c.criadoEm)}
+                    </div>
+                    <p className="text-sm text-inkSoft mt-1 whitespace-pre-wrap">{c.descricao}</p>
+                  </div>
                 </div>
-                <p className="text-sm text-inkSoft mt-1 whitespace-pre-wrap">{c.descricao}</p>
+                <div className="shrink-0">
+                  {podeGerenciarStatus ? (
+                    <SelectInput value={c.status} onChange={(e) => mudarStatus(c, e.target.value)}>
+                      {STATUS_CHAMADO_OPCOES.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </SelectInput>
+                  ) : (
+                    <PillStatusChamado status={c.status} />
+                  )}
+                </div>
               </div>
-              <div className="shrink-0">
-                {podeGerenciarStatus ? (
-                  <SelectInput value={c.status} onChange={(e) => mudarStatus(c, e.target.value)}>
-                    {STATUS_CHAMADO_OPCOES.map((s) => (
-                      <option key={s} value={s}>{s}</option>
-                    ))}
-                  </SelectInput>
-                ) : (
-                  <PillStatusChamado status={c.status} />
-                )}
-              </div>
-            </div>
-          </Card>
-        ))}
+            </Card>
+          );
+        })}
         {ordenada.length === 0 && (
           <div className="text-sm text-inkSoft italic">
             Nenhum chamado {filtroStatus !== "Todos" ? `com status "${filtroStatus}" ` : ""}por aqui ainda.
@@ -6351,11 +6449,15 @@ export default function App() {
   const [perfil, recarregarPerfil] = useUsuario(user?.uid);
   // Acesso Mestre é revalidado a cada entrada — nunca fica salvo entre sessões.
   const [mestreDesbloqueado, setMestreDesbloqueado] = useState(false);
+  // Idem para Aluno: a matrícula é confirmada de novo a cada entrada, por
+  // segurança (chamado de suporte "Login + matrícula").
+  const [alunoDesbloqueado, setAlunoDesbloqueado] = useState(false);
 
   useEffect(() => {
     const unsub = observarSessao((u) => {
       setUser(u || null);
       setMestreDesbloqueado(false);
+      setAlunoDesbloqueado(false);
     });
     return () => unsub();
   }, []);
@@ -6393,6 +6495,10 @@ export default function App() {
 
   if (perfil.tipo === "Mestre" && !mestreDesbloqueado) {
     return <TelaSenhaMestre onDesbloquear={() => setMestreDesbloqueado(true)} />;
+  }
+
+  if (perfil.tipo === "Aluno" && !alunoDesbloqueado) {
+    return <TelaConfirmarMatricula perfil={perfil} onDesbloquear={() => setAlunoDesbloqueado(true)} />;
   }
 
   return <Dashboard user={user} perfil={perfil} recarregarPerfil={recarregarPerfil} />;
