@@ -1161,18 +1161,62 @@ async function extrairTextoPdf(arquivo) {
   return texto;
 }
 
-function parsearAlunosDoTexto(texto) {
-  const linhas = texto.split("\n").map((l) => l.trim()).filter(Boolean);
+function parsearAlunosDoTexto(textoOriginal) {
+  // Vários sistemas escolares (ex.: professoronline.sed.sc.gov.br) exportam
+  // PDFs em que a camada de texto duplica nome/matrícula/data lado a lado
+  // (provavelmente por causa de um recurso de tooltip "passe o mouse sobre o
+  // nome"). Por isso tentamos primeiro reconhecer o padrão de tabela
+  // "Nº Nome Matrícula", com cada campo podendo (ou não) vir duplicado.
+  const texto = textoOriginal.replace(/\s+/g, " ").trim();
+  const NOME = "A-Za-zÀ-ÖØ-öø-ÿ";
+  const regexTabela = new RegExp(
+    `(\\d{1,3})\\s+\\1\\s+([${NOME}][${NOME}\\s'.-]{2,80}?)(?:\\s+\\2)?\\s+(\\d{6,})(?:\\s+\\3)?`,
+    "g"
+  );
+  let resultado = [];
+  let vistos = new Set();
+  let m;
+  while ((m = regexTabela.exec(texto)) !== null) {
+    const nome = m[2].replace(/\s+/g, " ").trim();
+    const matricula = m[3];
+    if (nome.length >= 3 && !vistos.has(matricula)) {
+      resultado.push({ nome, matricula });
+      vistos.add(matricula);
+    }
+  }
+  if (resultado.length > 0) return resultado;
+
+  // Sem número de linha na frente (ex.: "Nome ... Matrícula", sem índice) —
+  // mesma lógica, mas sem exigir "Nº Nº" no início.
+  const regexSemIndice = new RegExp(
+    `([${NOME}][${NOME}\\s'.-]{2,80}?)(?:\\s+\\1)?\\s+(\\d{6,})(?:\\s+\\2)?`,
+    "g"
+  );
+  vistos = new Set();
+  while ((m = regexSemIndice.exec(texto)) !== null) {
+    const nome = m[1].replace(/\s+/g, " ").trim();
+    const matricula = m[2];
+    const palavras = nome.split(" ").filter(Boolean);
+    if (palavras.length >= 2 && palavras.length <= 8 && !vistos.has(matricula)) {
+      resultado.push({ nome, matricula });
+      vistos.add(matricula);
+    }
+  }
+  if (resultado.length > 0) return resultado;
+
+  // Último recurso: uma linha por aluno (PDFs mais simples, com quebra de
+  // linha real preservada) — procura o primeiro número de 4+ dígitos da
+  // linha e usa o resto como nome.
+  const linhas = textoOriginal.split("\n").map((l) => l.trim()).filter(Boolean);
   const regexMatricula = /\b(\d{4,})\b/;
-  const resultado = [];
-  const vistos = new Set();
+  vistos = new Set();
   for (const linha of linhas) {
-    const m = linha.match(regexMatricula);
-    if (!m) continue;
-    const matricula = m[1];
+    const mm = linha.match(regexMatricula);
+    if (!mm) continue;
+    const matricula = mm[1];
     if (vistos.has(matricula)) continue;
     const nome = linha
-      .replace(m[0], "")
+      .replace(mm[0], "")
       .replace(/[-–—:.]/g, " ")
       .replace(/\s+/g, " ")
       .trim();
