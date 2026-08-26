@@ -3,7 +3,7 @@ import {
   Menu, X, LogOut, School, Users, Building2, LayoutDashboard, BookOpen,
   ClipboardList, FileBarChart, ScrollText, History, Save, Eye, EyeOff,
   Crown, UserCheck, UserX, Pencil, Trash2, Plus, ShieldCheck, Wallet,
-  Landmark, GraduationCap, Layers, Package, ChevronLeft, Download, ExternalLink,
+  Landmark, GraduationCap, Layers, Package, ChevronLeft, ChevronRight, Download, ExternalLink,
   LifeBuoy, Printer, Upload, Star,
 } from "lucide-react";
 import {
@@ -2473,6 +2473,7 @@ function GestaoLancamentosView({ empresa, perfil, lancamentos, salvarLancamentos
     contaDebito: "",
     contaCredito: "",
     valor: "",
+    valorUnitario: "",
     documento: "",
     observacoes: "",
     quantidade: "",
@@ -2515,6 +2516,7 @@ function GestaoLancamentosView({ empresa, perfil, lancamentos, salvarLancamentos
       contaDebito: l.contaDebito,
       contaCredito: l.contaCredito,
       valor: l.valor,
+      valorUnitario: l.valorUnitario || "",
       documento: l.documento || "",
       observacoes: l.observacoes || "",
       quantidade: l.quantidade || "",
@@ -2545,7 +2547,19 @@ function GestaoLancamentosView({ empresa, perfil, lancamentos, salvarLancamentos
 
   const contaDebitoObj = contaByCode[form.contaDebito];
   const contaCreditoObj = contaByCode[form.contaCredito];
-  const envolveEstoque = !!(contaDebitoObj?.controlaEstoque || contaCreditoObj?.controlaEstoque);
+  const ehEntradaEstoque = !!contaDebitoObj?.controlaEstoque; // compra — débito na conta de estoque
+  const ehSaidaEstoque = !!contaCreditoObj?.controlaEstoque; // venda — crédito na conta de estoque
+  const envolveEstoque = ehEntradaEstoque || ehSaidaEstoque;
+
+  const quantidadeNum = Number(form.quantidade) || 0;
+  const valorUnitarioNum = Number(form.valorUnitario) || 0;
+  const valorTotalCompra = quantidadeNum * valorUnitarioNum;
+  // Na venda, o valor total é digitado (é o valor da operação); o unitário
+  // mostrado aqui é só referência — não interfere no estoque, porque cada
+  // método de custeio (PEPS/UEPS/MP) calcula seu próprio custo unitário a
+  // partir da ficha kardex, não do valor de venda.
+  const valorUnitarioVendaCalculado =
+    ehSaidaEstoque && quantidadeNum > 0 ? (Number(form.valor) || 0) / quantidadeNum : 0;
 
   const salvar = async (e) => {
     e.preventDefault();
@@ -2553,20 +2567,30 @@ function GestaoLancamentosView({ empresa, perfil, lancamentos, salvarLancamentos
       setErro("A conta de débito e a de crédito não podem ser iguais.");
       return;
     }
-    if (!form.contaDebito || !form.contaCredito || !form.valor || !form.historico.trim() || !form.data) {
-      setErro("Preencha data, histórico, as duas contas e o valor.");
+    if (!form.contaDebito || !form.contaCredito || !form.historico.trim() || !form.data) {
+      setErro("Preencha data, histórico e as duas contas.");
       return;
     }
-    if (envolveEstoque && !(Number(form.quantidade) > 0)) {
-      setErro('Esta conta controla estoque — informe a Quantidade movimentada (maior que zero).');
+    if (envolveEstoque && !(quantidadeNum > 0)) {
+      setErro("Esta conta controla estoque — informe a Quantidade movimentada (maior que zero).");
+      return;
+    }
+    if (ehEntradaEstoque && !(valorUnitarioNum > 0)) {
+      setErro("Informe o Valor unitário da compra (maior que zero).");
+      return;
+    }
+    const valorFinal = ehEntradaEstoque ? valorTotalCompra : Number(form.valor);
+    if (!(valorFinal > 0)) {
+      setErro("Informe o valor do lançamento.");
       return;
     }
     setErro("");
     const dados = {
       ...form,
-      valor: Number(form.valor),
+      valor: valorFinal,
       tipoOperacao: form.tipoOperacao || undefined,
-      quantidade: envolveEstoque ? Number(form.quantidade) : undefined,
+      quantidade: envolveEstoque ? quantidadeNum : undefined,
+      valorUnitario: ehEntradaEstoque ? valorUnitarioNum : undefined,
     };
     if (editandoId) {
       await salvarLancamentos(lanc.map((l) => (l.id === editandoId ? { ...l, ...dados } : l)));
@@ -2647,12 +2671,9 @@ function GestaoLancamentosView({ empresa, perfil, lancamentos, salvarLancamentos
               contaByCode={contaByCode}
             />
           </Field>
-          {envolveEstoque && (
-            <div className="sm:col-span-2">
-              <Field
-                label="Quantidade (movimenta o estoque)"
-                hint={`${contaDebitoObj?.controlaEstoque ? contaDebitoObj.nome : contaCreditoObj.nome} controla estoque — esta quantidade alimenta automaticamente o Controle de Estoque (PEPS/UEPS/MP).`}
-              >
+          {ehEntradaEstoque && (
+            <>
+              <Field label="Quantidade" hint={`${contaDebitoObj.nome} controla estoque — quantidade comprada.`}>
                 <TxtInput
                   type="number"
                   step="0.01"
@@ -2663,19 +2684,69 @@ function GestaoLancamentosView({ empresa, perfil, lancamentos, salvarLancamentos
                   onChange={(e) => setForm({ ...form, quantidade: e.target.value })}
                 />
               </Field>
-            </div>
+              <Field label="Valor unitário (R$)" hint="Custo de compra de cada unidade.">
+                <TxtInput
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  required
+                  placeholder="0,00"
+                  value={form.valorUnitario}
+                  onChange={(e) => setForm({ ...form, valorUnitario: e.target.value })}
+                />
+              </Field>
+              <Field label="Valor Total (R$) — calculado automaticamente">
+                <TxtInput readOnly disabled value={money(valorTotalCompra)} />
+              </Field>
+            </>
           )}
-          <Field label="Valor (R$)">
-            <TxtInput
-              type="number"
-              step="0.01"
-              min="0.01"
-              required
-              placeholder="0,00"
-              value={form.valor}
-              onChange={(e) => setForm({ ...form, valor: e.target.value })}
-            />
-          </Field>
+
+          {ehSaidaEstoque && (
+            <>
+              <Field label="Quantidade" hint={`${contaCreditoObj.nome} controla estoque — quantidade vendida/baixada.`}>
+                <TxtInput
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  required
+                  placeholder="Ex.: 60"
+                  value={form.quantidade}
+                  onChange={(e) => setForm({ ...form, quantidade: e.target.value })}
+                />
+              </Field>
+              <Field
+                label="Valor Total (R$)"
+                hint="Valor da venda — o custo pelo PEPS/UEPS/MP é calculado à parte, no Controle de Estoque."
+              >
+                <TxtInput
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  required
+                  placeholder="0,00"
+                  value={form.valor}
+                  onChange={(e) => setForm({ ...form, valor: e.target.value })}
+                />
+              </Field>
+              <Field label="Valor unitário (R$) — referência, calculado automaticamente">
+                <TxtInput readOnly disabled value={money(valorUnitarioVendaCalculado)} />
+              </Field>
+            </>
+          )}
+
+          {!envolveEstoque && (
+            <Field label="Valor (R$)">
+              <TxtInput
+                type="number"
+                step="0.01"
+                min="0.01"
+                required
+                placeholder="0,00"
+                value={form.valor}
+                onChange={(e) => setForm({ ...form, valor: e.target.value })}
+              />
+            </Field>
+          )}
           <Field label="Documento">
             <TxtInput
               placeholder="Ex.: NF 1234"
@@ -3609,7 +3680,7 @@ function derivarMovimentosEstoque(lancamentos, contaByCode) {
       if (deb?.controlaEstoque && quantidade > 0) {
         return {
           id: l.id, data: l.data, tipo: "Entrada", quantidade,
-          valorUnit: quantidade ? Number(l.valor) / quantidade : 0,
+          valorUnit: l.valorUnitario != null ? Number(l.valorUnitario) : (quantidade ? Number(l.valor) / quantidade : 0),
           contaCodigo: deb.codigo, contaNome: deb.nome, historico: l.historico,
         };
       }
@@ -4156,17 +4227,24 @@ function ManualCicloContabil() {
           Clique no botão — o lançamento aparece imediatamente no Livro Diário logo abaixo, e
           todos os relatórios já são recalculados.
         </PassoManual>
-        <PassoManual n={8} titulo="Quantidade (só aparece em contas de estoque)">
+        <PassoManual n={8} titulo="Contas de estoque: Quantidade, Valor unitário e Valor Total">
           Se a conta débito ou crédito escolhida controla estoque (ex.: "Mercadorias para
-          Revenda"), um campo extra "Quantidade" aparece no formulário — preencha com a
-          quantidade movimentada.
+          Revenda"), o formulário muda: numa <b>compra</b> (débito na conta de estoque), você
+          digita Quantidade e Valor unitário, e o Valor Total é calculado sozinho. Numa{" "}
+          <b>venda</b> (crédito na conta de estoque), você digita Quantidade e Valor Total (o
+          valor da venda), e o Valor unitário aparece só como referência — o custo de cada
+          método (PEPS/UEPS/MP) é calculado à parte, no Controle de Estoque.
         </PassoManual>
       </Card>
       <div className="text-xs text-inkSoft mb-4 space-y-2">
         <p>
-          <b>Exemplo prático:</b> "Comprei 100 unidades de mercadorias à vista por R$ 500" → Conta
-          débito: 1.1.3.01 Mercadorias para Revenda · Conta crédito: 1.1.1.01 Caixa Geral · Valor:
-          500,00 · Quantidade: 100.
+          <b>Exemplo de compra:</b> Conta débito: 1.1.3.01 Mercadorias para Revenda · Conta
+          crédito: 1.1.1.01 Caixa Geral · Quantidade: 100 · Valor unitário: 5,00 · Valor Total:
+          500,00 (calculado sozinho).
+        </p>
+        <p>
+          <b>Exemplo de venda:</b> Conta débito: 1.1.1.01 Caixa Geral · Conta crédito: 1.1.3.01
+          Mercadorias para Revenda · Quantidade: 60 · Valor Total: 850,00 (o valor da venda).
         </p>
         <p>
           <b>Errou um lançamento?</b> Se você tiver permissão, clique em "Editar" na linha
@@ -5377,6 +5455,7 @@ const BANCO_ATIVIDADES = {
 
 function AtividadeAvaliativa({ moduloId, moduloLabel, perfil, empresas, notas, salvarNotas, registrarAuditoria }) {
   const perguntas = BANCO_ATIVIDADES[moduloId] || [];
+  const [aberto, setAberto] = useState(false);
   const [respostas, setRespostas] = useState({});
   const [modoRecuperacao, setModoRecuperacao] = useState(false);
   const [resultadoTeste, setResultadoTeste] = useState(null); // só usado por quem não é Aluno (não persiste)
@@ -5452,16 +5531,19 @@ function AtividadeAvaliativa({ moduloId, moduloLabel, perfil, empresas, notas, s
     }
   };
 
-  const Cabecalho = () => (
-    <>
-      <h3 className="font-serif font-semibold text-ink text-lg mb-1">Atividade Avaliativa</h3>
-      <p className="text-sm text-inkSoft mb-4">
-        {perguntas.length} questões (múltipla escolha e Verdadeiro/Falso) sobre {moduloLabel.toLowerCase()} —
-        correção automática, nota de 0,0 a 10,0.
-        {!souAluno && " Como você não é Aluno, pode responder só para conferir, sem gravar nota."}
-      </p>
-    </>
-  );
+  const fechar = () => setAberto(false);
+
+  // Resumo mostrado no "tópico" fechado, antes de clicar para abrir.
+  let resumo;
+  if (!souAluno) {
+    resumo = "Clique para conferir as questões (não grava nota).";
+  } else if (tentativas >= 2) {
+    resumo = `Concluída — nota final ${numFmt(registro.nota)}`;
+  } else if (tentativas === 1) {
+    resumo = `Nota da atividade original: ${numFmt(registro.notaOriginal)} — Recuperação Paralela disponível`;
+  } else {
+    resumo = `${perguntas.length} questões — ainda não feita`;
+  }
 
   const Formulario = ({ aoCorrigir, textoBotao }) => (
     <>
@@ -5522,97 +5604,129 @@ function AtividadeAvaliativa({ moduloId, moduloLabel, perfil, empresas, notas, s
     </>
   );
 
-  // --- Quem não é Aluno: só testa, nunca grava nota, sempre pode refazer localmente. ---
-  if (!souAluno) {
-    return (
-      <div className="mt-8 pt-6 border-t border-line">
-        <Cabecalho />
-        {!resultadoTeste ? (
-          <Formulario aoCorrigir={corrigir} textoBotao="Corrigir atividade" />
-        ) : (
-          <div className="flex items-center gap-3 flex-wrap">
-            <Card className="inline-block">
-              <div className="text-sm text-ink">
-                Acertos: <b>{resultadoTeste.acertos}</b> de <b>{resultadoTeste.total}</b> — nota:{" "}
-                <b className={resultadoTeste.nota >= 6 ? "text-green" : "text-red"}>{numFmt(resultadoTeste.nota)}</b>
+  const renderConteudo = () => {
+    // --- Quem não é Aluno: só testa, nunca grava nota, sempre pode refazer localmente. ---
+    if (!souAluno) {
+      return !resultadoTeste ? (
+        <Formulario aoCorrigir={corrigir} textoBotao="Corrigir atividade" />
+      ) : (
+        <div className="flex items-center gap-3 flex-wrap">
+          <Card className="inline-block">
+            <div className="text-sm text-ink">
+              Acertos: <b>{resultadoTeste.acertos}</b> de <b>{resultadoTeste.total}</b> — nota:{" "}
+              <b className={resultadoTeste.nota >= 6 ? "text-green" : "text-red"}>{numFmt(resultadoTeste.nota)}</b>
+            </div>
+          </Card>
+          <Botao
+            variant="ghost"
+            onClick={() => {
+              setRespostas({});
+              setResultadoTeste(null);
+            }}
+          >
+            Testar de novo
+          </Botao>
+        </div>
+      );
+    }
+
+    // --- Aluno, tentativas === 2: já usou a atividade original + a recuperação. Travado. ---
+    if (tentativas >= 2) {
+      return (
+        <>
+          <Card>
+            <div className="text-sm text-ink space-y-1.5">
+              <div>Nota da atividade original: <b>{numFmt(registro.notaOriginal)}</b></div>
+              <div>Nota da Recuperação Paralela: <b>{numFmt(registro.notaRecuperacao)}</b></div>
+              <div className="pt-1.5 border-t border-line mt-1">
+                Nota final (prevalece a maior):{" "}
+                <b className={registro.nota >= 6 ? "text-green" : "text-red"}>{numFmt(registro.nota)}</b>
               </div>
-            </Card>
-            <Botao
-              variant="ghost"
-              onClick={() => {
-                setRespostas({});
-                setResultadoTeste(null);
-              }}
-            >
-              Testar de novo
-            </Botao>
+            </div>
+          </Card>
+          <p className="text-xs text-inkSoft mt-2">
+            Você já usou as duas tentativas permitidas para este módulo (atividade original + Recuperação
+            Paralela).
+          </p>
+        </>
+      );
+    }
+
+    // --- Aluno, tentativas === 1, ainda não entrou no modo recuperação: mostra a nota e o botão. ---
+    if (tentativas === 1 && !modoRecuperacao) {
+      return (
+        <>
+          <Card className="mb-3">
+            <div className="text-sm text-ink">
+              Nota da atividade original:{" "}
+              <b className={registro.notaOriginal >= 6 ? "text-green" : "text-red"}>{numFmt(registro.notaOriginal)}</b>
+            </div>
+          </Card>
+          <Botao
+            onClick={() => {
+              setRespostas({});
+              setModoRecuperacao(true);
+            }}
+          >
+            Fazer Recuperação Paralela
+          </Botao>
+          <p className="text-xs text-inkSoft mt-2">
+            Você terá direito a uma única tentativa adicional. Prevalece sempre a maior nota entre a atividade
+            original e a Recuperação Paralela — não existirá nova tentativa depois desta.
+          </p>
+        </>
+      );
+    }
+
+    // --- Aluno respondendo agora: primeira tentativa (tentativas === 0) ou recuperação (modoRecuperacao). ---
+    return (
+      <>
+        {modoRecuperacao && (
+          <div className="text-sm text-ink bg-gold/10 border border-gold/40 rounded-lg p-3 mb-4">
+            Você está fazendo a <b>Recuperação Paralela</b> — sua nota original ({numFmt(registro.notaOriginal)})
+            fica guardada, e a nota final será a maior entre as duas.
           </div>
         )}
-      </div>
+        <Formulario aoCorrigir={corrigir} textoBotao={modoRecuperacao ? "Enviar Recuperação Paralela" : "Corrigir atividade"} />
+      </>
     );
-  }
+  };
 
-  // --- Aluno, tentativas === 2: já usou a atividade original + a recuperação. Travado. ---
-  if (tentativas >= 2) {
-    return (
-      <div className="mt-8 pt-6 border-t border-line">
-        <Cabecalho />
-        <Card>
-          <div className="text-sm text-ink space-y-1.5">
-            <div>Nota da atividade original: <b>{numFmt(registro.notaOriginal)}</b></div>
-            <div>Nota da Recuperação Paralela: <b>{numFmt(registro.notaRecuperacao)}</b></div>
-            <div className="pt-1.5 border-t border-line mt-1">
-              Nota final (prevalece a maior):{" "}
-              <b className={registro.nota >= 6 ? "text-green" : "text-red"}>{numFmt(registro.nota)}</b>
-            </div>
-          </div>
-        </Card>
-        <p className="text-xs text-inkSoft mt-2">
-          Você já usou as duas tentativas permitidas para este módulo (atividade original + Recuperação
-          Paralela).
-        </p>
-      </div>
-    );
-  }
-
-  // --- Aluno, tentativas === 1, ainda não entrou no modo recuperação: mostra a nota e o botão. ---
-  if (tentativas === 1 && !modoRecuperacao) {
-    return (
-      <div className="mt-8 pt-6 border-t border-line">
-        <Cabecalho />
-        <Card className="mb-3">
-          <div className="text-sm text-ink">
-            Nota da atividade original:{" "}
-            <b className={registro.notaOriginal >= 6 ? "text-green" : "text-red"}>{numFmt(registro.notaOriginal)}</b>
-          </div>
-        </Card>
-        <Botao
-          onClick={() => {
-            setRespostas({});
-            setModoRecuperacao(true);
-          }}
-        >
-          Fazer Recuperação Paralela
-        </Botao>
-        <p className="text-xs text-inkSoft mt-2">
-          Você terá direito a uma única tentativa adicional. Prevalece sempre a maior nota entre a atividade
-          original e a Recuperação Paralela — não existirá nova tentativa depois desta.
-        </p>
-      </div>
-    );
-  }
-
-  // --- Aluno respondendo agora: primeira tentativa (tentativas === 0) ou recuperação (modoRecuperacao). ---
   return (
     <div className="mt-8 pt-6 border-t border-line">
-      <Cabecalho />
-      {modoRecuperacao && (
-        <div className="text-sm text-ink bg-gold/10 border border-gold/40 rounded-lg p-3 mb-4">
-          Você está fazendo a <b>Recuperação Paralela</b> — sua nota original ({numFmt(registro.notaOriginal)})
-          fica guardada, e a nota final será a maior entre as duas.
+      <button
+        type="button"
+        onClick={() => setAberto(true)}
+        className="w-full flex items-center justify-between gap-3 bg-white border border-line rounded-xl px-4 py-3 hover:border-green transition-colors text-left"
+      >
+        <div>
+          <div className="font-serif font-semibold text-ink text-base">Atividade Avaliativa — {moduloLabel}</div>
+          <div className="text-xs text-inkSoft mt-0.5">{resumo}</div>
+        </div>
+        <ChevronRight size={18} className="text-inkSoft shrink-0" />
+      </button>
+
+      {aberto && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={fechar}>
+          <div
+            className="bg-paper rounded-xl max-w-2xl w-full max-h-[85vh] overflow-y-auto p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3 mb-1">
+              <h3 className="font-serif font-semibold text-ink text-lg">Atividade Avaliativa</h3>
+              <button onClick={fechar} className="text-inkSoft hover:text-ink shrink-0" title="Fechar">
+                <X size={20} />
+              </button>
+            </div>
+            <p className="text-sm text-inkSoft mb-4">
+              {perguntas.length} questões (múltipla escolha e Verdadeiro/Falso) sobre {moduloLabel.toLowerCase()} —
+              correção automática, nota de 0,0 a 10,0.
+              {!souAluno && " Como você não é Aluno, pode responder só para conferir, sem gravar nota."}
+            </p>
+            {renderConteudo()}
+          </div>
         </div>
       )}
-      <Formulario aoCorrigir={corrigir} textoBotao={modoRecuperacao ? "Enviar Recuperação Paralela" : "Corrigir atividade"} />
     </div>
   );
 }
