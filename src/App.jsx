@@ -2101,6 +2101,7 @@ function GestaoPlanoContasView({ perfil, contas, salvarPlanoContas, auditoria, r
   const [mostrarForm, setMostrarForm] = useState(false);
   const [editandoCodigo, setEditandoCodigo] = useState(null); // código não muda numa edição
   const [erro, setErro] = useState("");
+  const [colapsados, setColapsados] = useState(new Set());
 
   const formVazio = () => ({
     codigo: "",
@@ -2132,6 +2133,30 @@ function GestaoPlanoContasView({ perfil, contas, salvarPlanoContas, auditoria, r
     const f = filtro.toLowerCase();
     return c.codigo.toLowerCase().includes(f) || c.nome.toLowerCase().includes(f);
   });
+
+  // Expandir/recolher grupos — colapsados guarda os códigos "fechados"; uma
+  // conta fica escondida se qualquer um dos seus ancestrais (grupo/subgrupo)
+  // estiver colapsado. Busca ativa ignora o recolhimento (mostra tudo que bate).
+  const temFilhos = (codigo) => contas.some((x) => x.codigo !== codigo && x.codigo.startsWith(codigo + "."));
+  const estaVisivel = (codigo) => {
+    if (filtro) return true;
+    const partes = codigo.split(".");
+    for (let i = 1; i < partes.length; i++) {
+      if (colapsados.has(partes.slice(0, i).join("."))) return false;
+    }
+    return true;
+  };
+  const alternarColapso = (codigo) => {
+    setColapsados((atual) => {
+      const novo = new Set(atual);
+      if (novo.has(codigo)) novo.delete(codigo);
+      else novo.add(codigo);
+      return novo;
+    });
+  };
+  const recolherTudo = () => setColapsados(new Set(contas.filter((c) => temFilhos(c.codigo)).map((c) => c.codigo)));
+  const expandirTudo = () => setColapsados(new Set());
+  const linhasVisiveis = linhas.filter((c) => estaVisivel(c.codigo));
 
   const iniciarNovo = () => {
     setEditandoCodigo(null);
@@ -2229,6 +2254,14 @@ function GestaoPlanoContasView({ perfil, contas, salvarPlanoContas, auditoria, r
           onChange={(e) => setFiltro(e.target.value)}
           className="flex-1"
         />
+        <div className="flex gap-2 text-xs shrink-0">
+          <button onClick={expandirTudo} className="text-green underline decoration-dotted hover:opacity-70">
+            Expandir tudo
+          </button>
+          <button onClick={recolherTudo} className="text-green underline decoration-dotted hover:opacity-70">
+            Recolher tudo
+          </button>
+        </div>
         {podeEditar && <Botao onClick={iniciarNovo}>
           <Plus size={16} /> Nova conta
         </Botao>}
@@ -2328,14 +2361,30 @@ function GestaoPlanoContasView({ perfil, contas, salvarPlanoContas, auditoria, r
             </tr>
           </thead>
           <tbody>
-            {linhas.map((c) => (
+            {linhasVisiveis.map((c) => (
               <tr
                 key={c.codigo}
                 className={"border-b border-line/50 " + (c.nivel <= 2 ? "font-semibold" : "")}
               >
                 <td className="py-1.5 pr-3 font-mono text-xs whitespace-nowrap">{c.codigo}</td>
                 <td className="py-1.5 pr-3" style={{ paddingLeft: (c.nivel - 1) * 14 }}>
-                  {c.nome}
+                  <span className="inline-flex items-center gap-1">
+                    {temFilhos(c.codigo) ? (
+                      <button
+                        onClick={() => alternarColapso(c.codigo)}
+                        className="text-inkSoft hover:text-ink shrink-0"
+                        title={colapsados.has(c.codigo) ? "Expandir" : "Recolher"}
+                      >
+                        <ChevronRight
+                          size={14}
+                          className={"transition-transform " + (colapsados.has(c.codigo) ? "" : "rotate-90")}
+                        />
+                      </button>
+                    ) : (
+                      <span className="inline-block w-[14px]" />
+                    )}
+                    {c.nome}
+                  </span>
                 </td>
                 <td className="py-1.5 pr-3">{c.nivel}</td>
                 <td className="py-1.5 pr-3">{c.grupo}</td>
@@ -2358,7 +2407,7 @@ function GestaoPlanoContasView({ perfil, contas, salvarPlanoContas, auditoria, r
                 )}
               </tr>
             ))}
-            {linhas.length === 0 && (
+            {linhasVisiveis.length === 0 && (
               <tr>
                 <td colSpan={podeEditar ? 8 : 7} className="py-4 text-center text-inkSoft italic">
                   Nenhuma conta encontrada.
@@ -2401,6 +2450,7 @@ function GestaoPlanoContasView({ perfil, contas, salvarPlanoContas, auditoria, r
 
 function GestaoSaldosView({ empresa, saldos, salvarSaldos, leaves, registrarAuditoria }) {
   const [filtro, setFiltro] = useState("");
+  const [mostrarTodas, setMostrarTodas] = useState(false);
   const [rascunho, setRascunho] = useState(saldos || {});
 
   useEffect(() => {
@@ -2411,7 +2461,15 @@ function GestaoSaldosView({ empresa, saldos, salvarSaldos, leaves, registrarAudi
     return <div className="text-sm text-inkSoft italic">Selecione uma empresa ativa acima para ver os saldos.</div>;
   }
 
-  const linhas = leaves.filter((c) => {
+  // Por padrão, só as contas patrimoniais (Ativo, Passivo, Patrimônio Líquido
+  // — grupos 1, 2 e 3) aparecem aqui, porque são as únicas que costumam
+  // precisar de saldo já na abertura da empresa. Contas de Receita, Custo e
+  // Despesa (grupos 4, 5 e 6) nascem zeradas e são movimentadas normalmente
+  // pelos Lançamentos, conforme os fatos contábeis do período.
+  const leavesPatrimoniais = leaves.filter((c) => ["1", "2", "3"].includes(c.codigo.split(".")[0]));
+  const baseVisivel = mostrarTodas ? leaves : leavesPatrimoniais;
+
+  const linhas = baseVisivel.filter((c) => {
     if (!filtro) return true;
     const f = filtro.toLowerCase();
     return c.codigo.toLowerCase().includes(f) || c.nome.toLowerCase().includes(f);
@@ -2437,9 +2495,17 @@ function GestaoSaldosView({ empresa, saldos, salvarSaldos, leaves, registrarAudi
   return (
     <div>
       <h2 className="text-lg font-serif font-semibold text-ink mb-1">Saldos Iniciais — {empresa.nome}</h2>
-      <p className="text-sm text-inkSoft mb-4">
+      <p className="text-sm text-inkSoft mb-1">
         Preencha o saldo devedor OU credor de cada conta no início do período (deixe em branco as
         que não tiverem saldo).
+      </p>
+      <p className="text-xs text-inkSoft mb-4">
+        {mostrarTodas
+          ? "Mostrando todas as contas do plano."
+          : "Mostrando só as contas patrimoniais (Ativo, Passivo e Patrimônio Líquido) — as de Receita, Custo e Despesa nascem zeradas e são movimentadas normalmente pelos Lançamentos."}{" "}
+        <button onClick={() => setMostrarTodas((v) => !v)} className="text-green underline decoration-dotted hover:opacity-70">
+          {mostrarTodas ? "Mostrar só patrimoniais" : "Mostrar todas as contas"}
+        </button>
       </p>
 
       <Card className="mb-4 flex flex-col sm:flex-row gap-2 sm:items-center">
@@ -3238,7 +3304,8 @@ function GestaoDREView({ empresa, lancamentos, saldos, perfil, empresas, notas, 
 
 // ---- Encerramento (ARE) ----
 
-function GestaoEncerramentoView({ empresa, lancamentos, saldos }) {
+function GestaoEncerramentoView({ empresa, lancamentos, saldos, perfil, salvarLancamentos, registrarAuditoria, leaves, contaByCode }) {
+  const [fechando, setFechando] = useState(false);
   if (!empresa) return <div className="text-sm text-inkSoft italic">Selecione uma empresa ativa acima.</div>;
 
   const totalReceitas = credMinusDebPrefix(lancamentos, saldos, "4");
@@ -3246,6 +3313,64 @@ function GestaoEncerramentoView({ empresa, lancamentos, saldos }) {
   const totalCustos = debMinusCredPrefix(lancamentos, saldos, "6");
   const resultado = totalReceitas - totalDespesas - totalCustos;
   const lucro = resultado >= 0;
+  const nadaParaFechar = Math.abs(totalReceitas) < 0.005 && Math.abs(totalDespesas) < 0.005 && Math.abs(totalCustos) < 0.005;
+
+  const fecharAutomaticamente = async () => {
+    if (
+      !confirm(
+        `Isso vai lançar automaticamente o encerramento de cada conta de Receita, Despesa e Custo com saldo (contra a ARE 7.1.01), e depois destinar o resultado (${lucro ? "lucro" : "prejuízo"} de ${money(Math.abs(resultado))}) ao Patrimônio Líquido.\n\nOs lançamentos ficam gravados no Livro Diário normalmente — você pode conferir e, se precisar, editar ou excluir depois. Confirma o fechamento?`
+      )
+    ) {
+      return;
+    }
+    setFechando(true);
+    try {
+      const dataHoje = new Date().toISOString().slice(0, 10);
+      const novos = [];
+      const contasResultado = (leaves || []).filter((c) => ["4", "5", "6"].includes(c.codigo.split(".")[0]));
+      for (const c of contasResultado) {
+        const s = saldoConta(lancamentos, saldos, contaByCode, c.codigo);
+        if (s.cre > 0.005) {
+          novos.push({
+            id: uid("l"), usuarioId: perfil?.uid, data: dataHoje,
+            historico: `Encerramento — ${c.nome}`, contaDebito: c.codigo, contaCredito: "7.1.01",
+            valor: Math.round(s.cre * 100) / 100, documento: "",
+            observacoes: "Gerado automaticamente pelo fechamento do exercício.",
+          });
+        } else if (s.dev > 0.005) {
+          novos.push({
+            id: uid("l"), usuarioId: perfil?.uid, data: dataHoje,
+            historico: `Encerramento — ${c.nome}`, contaDebito: "7.1.01", contaCredito: c.codigo,
+            valor: Math.round(s.dev * 100) / 100, documento: "",
+            observacoes: "Gerado automaticamente pelo fechamento do exercício.",
+          });
+        }
+      }
+      if (Math.abs(resultado) > 0.005) {
+        novos.push({
+          id: uid("l"), usuarioId: perfil?.uid, data: dataHoje,
+          historico: "Destinação do resultado do exercício",
+          contaDebito: lucro ? "7.1.01" : "3.9",
+          contaCredito: lucro ? "3.9" : "7.1.01",
+          valor: Math.round(Math.abs(resultado) * 100) / 100, documento: "",
+          observacoes: "Gerado automaticamente pelo fechamento do exercício.",
+        });
+      }
+      if (novos.length === 0) {
+        alert("Não há saldo em contas de resultado para encerrar.");
+        return;
+      }
+      await salvarLancamentos([...(lancamentos || []), ...novos]);
+      await registrarAuditoria(
+        "criar",
+        "lancamento",
+        `Fechou automaticamente o exercício da empresa "${empresa.nome}" — ${novos.length} lançamento(s) de encerramento`
+      );
+      alert(`Encerramento concluído — ${novos.length} lançamento(s) criado(s). Confira o Balanço Patrimonial.`);
+    } finally {
+      setFechando(false);
+    }
+  };
 
   return (
     <div>
@@ -3256,6 +3381,21 @@ function GestaoEncerramentoView({ empresa, lancamentos, saldos }) {
         Esses totais são a base para o encerramento das contas de Receita, Despesa e Custo contra a
         conta 7.1.01 (ARE — Apuração do Resultado do Exercício).
       </p>
+
+      {salvarLancamentos && (
+        <Card className="mb-4 flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="flex-1">
+            <div className="font-semibold text-ink text-sm">Fechar automaticamente</div>
+            <div className="text-xs text-inkSoft">
+              Lança sozinho, conta por conta, o encerramento das contas de resultado e a destinação do
+              lucro/prejuízo — sem precisar digitar cada lançamento manualmente em Lançamentos.
+            </div>
+          </div>
+          <Botao onClick={fecharAutomaticamente} disabled={fechando || nadaParaFechar}>
+            {fechando ? "Fechando…" : "Fechar automaticamente"}
+          </Botao>
+        </Card>
+      )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         <Card>
@@ -3335,10 +3475,11 @@ function GestaoEncerramentoView({ empresa, lancamentos, saldos }) {
         </table>
       </Card>
       <div className="text-xs text-inkSoft mt-3">
-        <b>Observação didática:</b> por simplicidade, este roteiro trabalha por totais de grupo. No
-        lançamento real, cada conta analítica de resultado deve ser encerrada individualmente contra
-        a 7.1.01 (ARE) — um lançamento por conta — antes do lançamento final de destinação. Use esses
-        valores como referência e pratique o encerramento conta a conta no módulo Lançamentos.
+        <b>Observação didática:</b> a tabela acima mostra o roteiro por totais de grupo, só como
+        referência resumida. O botão <b>"Fechar automaticamente"</b> lá em cima já faz o encerramento
+        do jeito correto — conta a conta, uma por uma — e a destinação do resultado, tudo de uma vez.
+        Se preferir praticar manualmente, pode digitar cada lançamento você mesmo no módulo
+        Lançamentos, usando os totais desta tabela como referência.
       </div>
     </div>
   );
@@ -6131,44 +6272,56 @@ function GestaoSuporteView({ perfil, chamados, salvarChamados, registrarAuditori
       )}
 
       <div className="space-y-2">
-        {ordenada.map((c) => {
-          const selecionado = estaSelecionado(c.id);
-          return (
-            <Card key={c.id} className={selecionado ? "" : "print:hidden"}>
-              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-                <div className="flex items-start gap-3">
-                  {!souAluno && (
-                    <input
-                      type="checkbox"
-                      checked={selecionado}
-                      onChange={() => alternarSelecao(c.id)}
-                      className="mt-1 print:hidden"
-                      title="Incluir na impressão/PDF"
-                    />
-                  )}
-                  <div>
-                    <div className="font-semibold text-ink text-sm">{c.assunto}</div>
-                    <div className="text-xs text-inkSoft">
-                      {c.autorNome} ({c.autorTipo}) · {fmtDateTime(c.criadoEm)}
+        {(() => {
+          const idsSelecionados = ordenada.filter((c) => estaSelecionado(c.id)).map((c) => c.id);
+          const ultimoSelecionadoId = idsSelecionados[idsSelecionados.length - 1];
+          return ordenada.map((c) => {
+            const selecionado = estaSelecionado(c.id);
+            const naoEhOUltimo = selecionado && c.id !== ultimoSelecionadoId;
+            return (
+              <Card
+                key={c.id}
+                className={
+                  (selecionado ? "" : "print:hidden") +
+                  (naoEhOUltimo ? " print:break-after-page print:pb-8" : "") +
+                  " print:break-inside-avoid"
+                }
+              >
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    {!souAluno && (
+                      <input
+                        type="checkbox"
+                        checked={selecionado}
+                        onChange={() => alternarSelecao(c.id)}
+                        className="mt-1 print:hidden"
+                        title="Incluir na impressão/PDF"
+                      />
+                    )}
+                    <div>
+                      <div className="font-semibold text-ink text-sm">{c.assunto}</div>
+                      <div className="text-xs text-inkSoft">
+                        {c.autorNome} ({c.autorTipo}) · {fmtDateTime(c.criadoEm)}
+                      </div>
+                      <p className="text-sm text-inkSoft mt-1 whitespace-pre-wrap">{c.descricao}</p>
                     </div>
-                    <p className="text-sm text-inkSoft mt-1 whitespace-pre-wrap">{c.descricao}</p>
+                  </div>
+                  <div className="shrink-0">
+                    {podeGerenciarStatus ? (
+                      <SelectInput value={c.status} onChange={(e) => mudarStatus(c, e.target.value)}>
+                        {STATUS_CHAMADO_OPCOES.map((s) => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </SelectInput>
+                    ) : (
+                      <PillStatusChamado status={c.status} />
+                    )}
                   </div>
                 </div>
-                <div className="shrink-0">
-                  {podeGerenciarStatus ? (
-                    <SelectInput value={c.status} onChange={(e) => mudarStatus(c, e.target.value)}>
-                      {STATUS_CHAMADO_OPCOES.map((s) => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                    </SelectInput>
-                  ) : (
-                    <PillStatusChamado status={c.status} />
-                  )}
-                </div>
-              </div>
-            </Card>
-          );
-        })}
+              </Card>
+            );
+          });
+        })()}
         {ordenada.length === 0 && (
           <div className="text-sm text-inkSoft italic">
             Nenhum chamado {filtroStatus !== "Todos" ? `com status "${filtroStatus}" ` : ""}por aqui ainda.
@@ -6621,7 +6774,16 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
       {aba === "encerramento" && (
         <>
           <SeletorEmpresaAtiva empresas={empresasVisiveis} empresaAtivaId={empresaAtivaId} setEmpresaAtivaId={setEmpresaAtivaId} />
-          <GestaoEncerramentoView empresa={empresaAtiva} lancamentos={lancamentos} saldos={saldos} />
+          <GestaoEncerramentoView
+            empresa={empresaAtiva}
+            lancamentos={lancamentos}
+            saldos={saldos}
+            perfil={perfil}
+            salvarLancamentos={salvarLancamentos}
+            registrarAuditoria={registrarAuditoria}
+            leaves={leavesAtivas}
+            contaByCode={contaByCodeAtivo}
+          />
         </>
       )}
       {aba === "balanco" && (
