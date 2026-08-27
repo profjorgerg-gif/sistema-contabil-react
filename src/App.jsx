@@ -2597,7 +2597,12 @@ function GestaoSaldosView({ empresa, saldos, salvarSaldos, leaves, registrarAudi
 // ---- Lançamentos (Livro Diário — por empresa ativa) ----
 
 function GestaoLancamentosView({ empresa, perfil, lancamentos, salvarLancamentos, leaves, contaByCode, registrarAuditoria }) {
-  const podeExcluir = !!perfil?.permissoes?.excluirLancamentos;
+  // Aluno sempre pode editar/excluir os lançamentos da PRÓPRIA empresa (é a
+  // prática dele) — a permissão "excluirLancamentos" (concedida por um
+  // Mestre/Professor) só é necessária para mexer em lançamentos de outras
+  // empresas (ex.: Mestre corrigindo o trabalho de um aluno).
+  const ehDonoDaEmpresa = perfil?.tipo === "Aluno" && empresa?.alunoId === perfil?.uid;
+  const podeExcluir = ehDonoDaEmpresa || !!perfil?.permissoes?.excluirLancamentos;
 
   const formVazio = () => ({
     data: new Date().toISOString().slice(0, 10),
