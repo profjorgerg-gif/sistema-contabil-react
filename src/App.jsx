@@ -2496,7 +2496,7 @@ function GestaoPlanoContasView({ perfil, contas, salvarPlanoContas, auditoria, r
           </div>
         </Card>
       )}
-      <AtividadeAvaliativa
+      <AtividadeAvaliativaV2
         moduloId="plano-contas"
         moduloLabel="Plano de Contas"
         perfil={perfil}
@@ -5904,6 +5904,91 @@ const BANCO_ATIVIDADES = {
   ],
 };
 
+// ---- Avaliações V2 (Fase 6 — piloto) ----------------------------------
+// Modelo novo: 3 exercícios de 10 questões por módulo + banco próprio de 30
+// questões para a Recuperação Paralela (que substitui a MÉDIA dos 3
+// exercícios, não só o mais fraco). Começando pelo piloto em Plano de
+// Contas — os demais módulos (Introdução, Estoque, Balancete, DRE)
+// continuam no modelo antigo (BANCO_ATIVIDADES, 1 atividade só) até serem
+// migrados também.
+const AVALIACOES_V2 = {
+  "plano-contas": {
+    exercicios: [
+      // Exercício 1 — conceitos básicos (grupo, natureza)
+      [
+        { tipo: "vf", enunciado: "Contas do grupo Ativo têm natureza Devedora — seu saldo aumenta com lançamentos a débito.", correta: true },
+        { tipo: "multipla", enunciado: "O grupo Passivo tem seu saldo aumentado por lançamentos:", opcoes: ["A débito", "A crédito", "Só no encerramento", "Nunca aumenta"], correta: 1 },
+        { tipo: "vf", enunciado: "Contas do grupo Receitas têm natureza Credora.", correta: true },
+        { tipo: "multipla", enunciado: "Contas de Despesas e Custos têm, tipicamente, natureza:", opcoes: ["Credora", "Devedora", "Mista", "Não têm natureza"], correta: 1 },
+        { tipo: "multipla", enunciado: "A conta “Caixa Geral” pertence a qual grupo do plano de contas?", opcoes: ["Passivo", "Patrimônio Líquido", "Ativo", "Receita"], correta: 2 },
+        { tipo: "vf", enunciado: "“Duplicatas a Pagar” é uma conta de natureza Credora, do grupo Passivo.", correta: true },
+        { tipo: "multipla", enunciado: "Entre as contas a seguir, qual tem natureza Credora?", opcoes: ["Caixa Geral", "Estoque de Mercadorias", "Duplicatas a Pagar", "Despesas com Aluguel"], correta: 2 },
+        { tipo: "vf", enunciado: "O Patrimônio Líquido representa dívidas da empresa com terceiros (fornecedores, bancos etc.).", correta: false },
+        { tipo: "multipla", enunciado: "Um lançamento a crédito numa conta de natureza Credora tem o efeito de:", opcoes: ["Diminuir o saldo", "Aumentar o saldo", "Zerar o saldo", "Não afeta o saldo"], correta: 1 },
+        { tipo: "vf", enunciado: "Uma mesma conta pode, em situações diferentes, ter natureza Devedora e Credora ao mesmo tempo.", correta: false },
+      ],
+      // Exercício 2 — hierarquia e níveis do código
+      [
+        { tipo: "multipla", enunciado: "No código “1.1.1.01” (4 segmentos separados por ponto), esse é o nível de uma:", opcoes: ["Conta de Grupo", "Conta de Subgrupo", "Conta Sintética", "Conta Analítica"], correta: 3 },
+        { tipo: "vf", enunciado: "Contas de nível Grupo e Subgrupo não recebem lançamento diretamente — servem só para agrupar e totalizar.", correta: true },
+        { tipo: "multipla", enunciado: "O código “1.1” (2 segmentos) representa uma conta de nível:", opcoes: ["Grupo", "Subgrupo", "Conta Sintética", "Conta Analítica"], correta: 1 },
+        { tipo: "vf", enunciado: "É possível existir uma “subconta analítica” de nível 5, como “1.1.1.02.01”, dentro de uma conta sintética de nível 4.", correta: true },
+        { tipo: "multipla", enunciado: "Para uma conta poder receber lançamentos diretamente no sistema, ela precisa:", opcoes: ["Ser sempre de nível 4", "Estar marcada com a opção “Recebe lançamentos”", "Ser do grupo Ativo", "Não precisa de nenhuma marcação especial"], correta: 1 },
+        { tipo: "vf", enunciado: "O código do plano de contas usa pontos (“.”) para indicar os níveis da hierarquia — cada segmento é um nível.", correta: true },
+        { tipo: "multipla", enunciado: "O código “3.1.01” (3 segmentos) tem quantos níveis de hierarquia?", opcoes: ["1", "2", "3", "4"], correta: 2 },
+        { tipo: "vf", enunciado: "É possível uma conta aceitar lançamento direto no nível 3 (Conta Sintética), mesmo em outro ramo do plano a conta equivalente estando no nível 4.", correta: true },
+        { tipo: "multipla", enunciado: "O código “1.2.3.09” tem 4 segmentos — isso corresponde a uma conta:", opcoes: ["De Grupo", "De Subgrupo", "Sintética", "Analítica"], correta: 3 },
+        { tipo: "vf", enunciado: "Contas Sintéticas servem só para agrupar subtotais — no Balancete, só aparecem contas com movimento no período.", correta: true },
+      ],
+      // Exercício 3 — aplicação prática no sistema
+      [
+        { tipo: "multipla", enunciado: "No sistema, ao tentar selecionar uma conta de nível Grupo num lançamento, o que acontece?", opcoes: ["O lançamento é aceito normalmente", "A conta nem aparece como opção para lançamento", "O sistema lança automaticamente na conta certa", "É preciso senha do Mestre"], correta: 1 },
+        { tipo: "vf", enunciado: "O Plano de Contas do sistema é único e compartilhado por todas as empresas cadastradas — não existe um plano diferente por empresa.", correta: true },
+        { tipo: "multipla", enunciado: "Onde o professor edita o Plano de Contas do sistema?", opcoes: ["Direto no Firebase", "Na tela “Plano de Contas”, com histórico de alterações", "Só é possível editar por planilha externa", "Não é possível editar, só cadastrar novo"], correta: 1 },
+        { tipo: "vf", enunciado: "Se o nome de uma conta for alterado no Plano de Contas, os lançamentos já feitos com aquele código passam a mostrar o novo nome automaticamente.", correta: true },
+        { tipo: "multipla", enunciado: "Para que serve o botão de expandir/recolher na tela do Plano de Contas?", opcoes: ["Excluir contas em massa", "Mostrar ou ocultar as subcontas de um grupo", "Exportar o plano em PDF", "Trocar a natureza da conta"], correta: 1 },
+        { tipo: "vf", enunciado: "Contas de Ativo com natureza Credora (contra-ativo, como “Depreciação Acumulada”) não podem existir no plano de contas do sistema.", correta: false },
+        { tipo: "multipla", enunciado: "Se uma conta estiver marcada como “Controla estoque”, isso afeta diretamente qual módulo do sistema?", opcoes: ["DRE", "Controle de Estoque (PEPS/UEPS/MP)", "Central de Suporte", "Auditoria"], correta: 1 },
+        { tipo: "vf", enunciado: "É possível cadastrar duas contas diferentes com o mesmo código no plano de contas.", correta: false },
+        { tipo: "multipla", enunciado: "O campo “natureza” de uma conta indica:", opcoes: ["O grupo a que ela pertence", "O lado (débito ou crédito) que aumenta seu saldo", "Se ela aceita lançamento", "O nível dela na hierarquia"], correta: 1 },
+        { tipo: "vf", enunciado: "Um lançamento a débito numa conta do grupo Receita tem o efeito de reduzir a receita (ex.: uma devolução de vendas).", correta: true },
+      ],
+    ],
+    recuperacao: [
+      { tipo: "vf", enunciado: "O grupo Ativo aumenta de saldo com lançamentos a débito.", correta: true },
+      { tipo: "multipla", enunciado: "O grupo Patrimônio Líquido tem natureza:", opcoes: ["Devedora", "Credora", "Neutra", "Depende da conta"], correta: 1 },
+      { tipo: "vf", enunciado: "Contas de Custos (como CMV) têm natureza Devedora, igual às Despesas.", correta: true },
+      { tipo: "multipla", enunciado: "A conta “Banco X” pertence a qual grupo?", opcoes: ["Passivo", "Ativo", "Receita", "Despesa"], correta: 1 },
+      { tipo: "vf", enunciado: "“Fornecedores” é uma conta de natureza Devedora.", correta: false },
+      { tipo: "multipla", enunciado: "Entre as opções, qual conta tem natureza Devedora?", opcoes: ["Duplicatas a Pagar", "Capital Subscrito", "Estoque de Mercadorias", "Receita de Vendas"], correta: 2 },
+      { tipo: "vf", enunciado: "O Ativo representa as obrigações da empresa com terceiros.", correta: false },
+      { tipo: "multipla", enunciado: "Um lançamento a débito numa conta de natureza Devedora tem o efeito de:", opcoes: ["Diminuir o saldo", "Aumentar o saldo", "Zerar o saldo", "Não afeta"], correta: 1 },
+      { tipo: "vf", enunciado: "Uma conta pode mudar de natureza dependendo do lançamento feito nela.", correta: false },
+      { tipo: "multipla", enunciado: "O código “2.1.1.01” corresponde a que nível hierárquico?", opcoes: ["Grupo", "Subgrupo", "Conta Sintética", "Conta Analítica"], correta: 3 },
+      { tipo: "vf", enunciado: "Contas de nível Subgrupo recebem lançamento diretamente, assim como as Analíticas.", correta: false },
+      { tipo: "multipla", enunciado: "O código “2.1” (2 segmentos) é de que nível?", opcoes: ["Grupo", "Subgrupo", "Sintética", "Analítica"], correta: 1 },
+      { tipo: "vf", enunciado: "Uma “subconta analítica” de nível 5 só pode existir dentro de uma conta de nível 4.", correta: true },
+      { tipo: "multipla", enunciado: "O que define se uma conta pode receber lançamento direto no sistema?", opcoes: ["O nível dela ser sempre 4", "A opção “Recebe lançamentos” estar marcada nela", "Pertencer ao grupo Ativo", "Ter código com menos de 3 dígitos"], correta: 1 },
+      { tipo: "vf", enunciado: "Cada ponto no código do plano de contas representa a passagem para um nível mais profundo da hierarquia.", correta: true },
+      { tipo: "multipla", enunciado: "O código “3.1.01” tem quantos segmentos (níveis)?", opcoes: ["1", "2", "3", "4"], correta: 2 },
+      { tipo: "vf", enunciado: "Todo plano de contas tem exatamente 4 níveis de profundidade, sem exceção.", correta: false },
+      { tipo: "multipla", enunciado: "O código “1.2.3.09” representa uma conta de qual nível?", opcoes: ["Grupo", "Subgrupo", "Sintética", "Analítica"], correta: 3 },
+      { tipo: "vf", enunciado: "No Balancete, contas Sintéticas sem nenhum movimento no período não aparecem listadas.", correta: true },
+      { tipo: "multipla", enunciado: "Ao tentar lançar direto numa conta de Grupo no sistema, o resultado é:", opcoes: ["Lançamento aceito normalmente", "A conta não aparece para seleção", "O sistema pede senha extra", "É criado um alerta de auditoria"], correta: 1 },
+      { tipo: "vf", enunciado: "Cada empresa cadastrada no sistema tem seu próprio plano de contas independente das demais.", correta: false },
+      { tipo: "multipla", enunciado: "Onde fica o histórico de alterações do Plano de Contas?", opcoes: ["Não existe histórico", "Na própria tela do Plano de Contas", "Só no Firebase, fora do sistema", "Na Central de Suporte"], correta: 1 },
+      { tipo: "vf", enunciado: "Renomear uma conta no Plano de Contas atualiza automaticamente o nome exibido nos lançamentos antigos feitos com aquele código.", correta: true },
+      { tipo: "multipla", enunciado: "O botão de expandir/recolher no Plano de Contas serve para:", opcoes: ["Excluir contas", "Mostrar/ocultar subcontas de um grupo", "Mudar a natureza da conta", "Gerar relatório em PDF"], correta: 1 },
+      { tipo: "vf", enunciado: "Contas de Ativo com natureza Credora (contra-ativo) nunca podem existir no plano de contas.", correta: false },
+      { tipo: "multipla", enunciado: "Marcar uma conta como “Controla estoque” afeta diretamente qual módulo?", opcoes: ["Central de Suporte", "Controle de Estoque", "Auditoria", "Backup"], correta: 1 },
+      { tipo: "vf", enunciado: "É permitido cadastrar duas contas com códigos idênticos, desde que os nomes sejam diferentes.", correta: false },
+      { tipo: "multipla", enunciado: "O campo “natureza” de uma conta serve para indicar:", opcoes: ["O nível hierárquico dela", "O lado que aumenta o saldo (débito ou crédito)", "Se ela controla estoque", "O grupo do DRE"], correta: 1 },
+      { tipo: "vf", enunciado: "Um lançamento a débito numa conta de Receita reduz o valor da receita registrada (ex.: devolução de vendas).", correta: true },
+      { tipo: "multipla", enunciado: "Entre as opções, qual conta é do grupo Receita?", opcoes: ["Receita de Vendas", "Despesas com Aluguel", "CMV", "Capital Subscrito"], correta: 0 },
+    ],
+  },
+};
+
 function AtividadeAvaliativa({ moduloId, moduloLabel, perfil, empresas, notas, salvarNotas, registrarAuditoria }) {
   const perguntas = BANCO_ATIVIDADES[moduloId] || [];
   const [aberto, setAberto] = useState(false);
@@ -5988,6 +6073,10 @@ function AtividadeAvaliativa({ moduloId, moduloLabel, perfil, empresas, notas, s
   let resumo;
   if (!souAluno) {
     resumo = "Clique para conferir as questões (não grava nota).";
+  } else if (registro?.overrideProfessor) {
+    // Nota foi sobrescrita manualmente pelo professor (tela Notas) — não usa
+    // o status da atividade automática, que pode estar desatualizado.
+    resumo = `Nota definida pelo professor(a): ${numFmt(registro.nota)}`;
   } else if (tentativas >= 2) {
     resumo = `Concluída — nota final ${numFmt(registro.nota)}`;
   } else if (tentativas === 1) {
@@ -6078,6 +6167,22 @@ function AtividadeAvaliativa({ moduloId, moduloLabel, perfil, empresas, notas, s
             Testar de novo
           </Botao>
         </div>
+      );
+    }
+
+    // --- Nota sobrescrita manualmente pelo professor: sempre trava aqui,
+    // não usa o fluxo automático (que teria dados possivelmente desatualizados). ---
+    if (registro?.overrideProfessor) {
+      return (
+        <Card>
+          <div className="text-sm text-ink">
+            Nota definida manualmente pelo professor(a):{" "}
+            <b className={registro.nota >= 6 ? "text-green" : "text-red"}>{numFmt(registro.nota)}</b>
+          </div>
+          <p className="text-xs text-inkSoft mt-1.5">
+            Avaliado por {registro.avaliadoPor} em {fmtDateTime(registro.avaliadoEm)}.
+          </p>
+        </Card>
       );
     }
 
@@ -6182,6 +6287,365 @@ function AtividadeAvaliativa({ moduloId, moduloLabel, perfil, empresas, notas, s
   );
 }
 
+// ---- Avaliação V2 (3 exercícios de 10 questões + Recuperação Paralela de
+// 30 questões, que substitui a MÉDIA dos 3, não só o exercício mais fraco;
+// + Termo de Desistência) — piloto em Plano de Contas (Fase 6). ----
+const NOTA_MINIMA_SATISFATORIA = 6;
+
+function AtividadeAvaliativaV2({ moduloId, moduloLabel, perfil, empresas, notas, salvarNotas, registrarAuditoria }) {
+  const banco = AVALIACOES_V2[moduloId];
+  const [aberto, setAberto] = useState(false);
+  const [exercicioAtivo, setExercicioAtivo] = useState(null); // 0, 1, 2, "recuperacao" ou null
+  const [respostas, setRespostas] = useState({});
+  const [confirmandoDesistencia, setConfirmandoDesistencia] = useState(false);
+  const [aceiteTermo, setAceiteTermo] = useState(false);
+  const [resultadoTeste, setResultadoTeste] = useState(null); // só para quem não é Aluno
+
+  const souAluno = perfil?.tipo === "Aluno";
+
+  if (!banco) return null;
+
+  const registro = souAluno
+    ? (notas || []).find((n) => n.alunoId === perfil.uid && n.moduloId === moduloId)
+    : null;
+  const notasExercicios = registro?.notasExercicios || [null, null, null];
+  const todosExerciciosFeitos = notasExercicios.every((n) => n !== null);
+  const mediaExercicios = todosExerciciosFeitos
+    ? Math.round((notasExercicios.reduce((s, n) => s + n, 0) / 3) * 10) / 10
+    : null;
+  const mediaSatisfatoria = mediaExercicios !== null && mediaExercicios >= NOTA_MINIMA_SATISFATORIA;
+  const precisaDeDecisao = todosExerciciosFeitos && !mediaSatisfatoria && !registro?.desistiu && registro?.notaRecuperacao == null;
+  const notaFinal = registro?.nota ?? mediaExercicios;
+
+  const perguntasAtivas =
+    exercicioAtivo === "recuperacao" ? banco.recuperacao : exercicioAtivo !== null ? banco.exercicios[exercicioAtivo] : [];
+  const responder = (i, valor) => setRespostas((r) => ({ ...r, [i]: valor }));
+  const todasRespondidas = perguntasAtivas.every((_, i) => respostas[i] !== undefined);
+
+  const empresaDoAluno = (empresas || []).find((e) => e.alunoId === perfil?.uid);
+
+  const registroBase = () => ({
+    id: registro?.id || uid("nota"),
+    alunoId: perfil.uid,
+    alunoNome: perfil.nome,
+    turmaId: perfil.turmaId,
+    empresaId: empresaDoAluno?.id || null,
+    moduloId,
+    moduloLabel,
+    notasExercicios: registro?.notasExercicios || [null, null, null],
+    notaRecuperacao: registro?.notaRecuperacao ?? null,
+    desistiu: registro?.desistiu || false,
+    desistenciaEm: registro?.desistenciaEm || null,
+  });
+
+  const salvar = async (novoRegistro, descricaoAuditoria) => {
+    const outras = (notas || []).filter((n) => !(n.alunoId === perfil.uid && n.moduloId === moduloId));
+    await salvarNotas([...outras, novoRegistro]);
+    if (registrarAuditoria) await registrarAuditoria("editar", "sistema", descricaoAuditoria);
+  };
+
+  const salvarExercicio = async (indice, notaObtida) => {
+    const base = registroBase();
+    const novasNotas = [...base.notasExercicios];
+    novasNotas[indice] = notaObtida;
+    const mediaNova =
+      novasNotas.every((n) => n !== null) ? Math.round((novasNotas.reduce((s, n) => s + n, 0) / 3) * 10) / 10 : null;
+    const novoRegistro = {
+      ...base,
+      notasExercicios: novasNotas,
+      nota: mediaNova, // provisório: some/troca se a recuperação ou desistência entrar em jogo
+      avaliadoPor: "Atividade automática",
+      avaliadoEm: Date.now(),
+    };
+    await salvar(
+      novoRegistro,
+      `${perfil.nome} concluiu o Exercício ${indice + 1} de "${moduloLabel}" com nota ${notaObtida}`
+    );
+  };
+
+  const salvarRecuperacao = async (notaObtida) => {
+    const base = registroBase();
+    const notaFinalNova = Math.max(mediaExercicios, notaObtida);
+    const novoRegistro = {
+      ...base,
+      notaRecuperacao: notaObtida,
+      nota: notaFinalNova,
+      avaliadoPor: "Atividade automática",
+      avaliadoEm: Date.now(),
+    };
+    await salvar(
+      novoRegistro,
+      `${perfil.nome} fez a Recuperação Paralela de "${moduloLabel}" com nota ${notaObtida} (nota final: ${notaFinalNova})`
+    );
+  };
+
+  const confirmarDesistencia = async () => {
+    const base = registroBase();
+    const novoRegistro = {
+      ...base,
+      desistiu: true,
+      desistenciaEm: Date.now(),
+      nota: mediaExercicios,
+      avaliadoPor: "Atividade automática",
+      avaliadoEm: Date.now(),
+    };
+    await salvar(novoRegistro, `${perfil.nome} assinou o Termo de Desistência da Recuperação Paralela de "${moduloLabel}"`);
+    setConfirmandoDesistencia(false);
+    setAceiteTermo(false);
+  };
+
+  const corrigir = async () => {
+    let acertos = 0;
+    perguntasAtivas.forEach((p, i) => {
+      if (respostas[i] === p.correta) acertos += 1;
+    });
+    const notaObtida = Math.round((acertos / perguntasAtivas.length) * 10 * 10) / 10;
+
+    if (souAluno) {
+      if (exercicioAtivo === "recuperacao") await salvarRecuperacao(notaObtida);
+      else await salvarExercicio(exercicioAtivo, notaObtida);
+      setExercicioAtivo(null);
+      setRespostas({});
+    } else {
+      setResultadoTeste({ acertos, total: perguntasAtivas.length, nota: notaObtida });
+    }
+  };
+
+  const Formulario = () => (
+    <>
+      <div className="space-y-4">
+        {perguntasAtivas.map((p, i) => (
+          <Card key={i}>
+            <div className="text-sm font-semibold text-ink mb-2">
+              {i + 1}. {p.enunciado}
+            </div>
+            {p.tipo === "vf" ? (
+              <div className="flex gap-2">
+                {[
+                  { valor: true, label: "Verdadeiro" },
+                  { valor: false, label: "Falso" },
+                ].map((op) => (
+                  <button
+                    key={op.label}
+                    type="button"
+                    onClick={() => responder(i, op.valor)}
+                    className={
+                      "px-4 py-1.5 rounded-lg text-sm font-semibold border transition-colors " +
+                      (respostas[i] === op.valor ? "bg-green text-white border-green" : "border-line text-inkSoft hover:text-ink")
+                    }
+                  >
+                    {op.label}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {p.opcoes.map((op, oi) => (
+                  <button
+                    key={oi}
+                    type="button"
+                    onClick={() => responder(i, oi)}
+                    className={
+                      "w-full text-left px-3 py-1.5 rounded-lg text-sm border transition-colors " +
+                      (respostas[i] === oi ? "bg-green text-white border-green" : "border-line text-inkSoft hover:text-ink")
+                    }
+                  >
+                    {op}
+                  </button>
+                ))}
+              </div>
+            )}
+          </Card>
+        ))}
+      </div>
+      <div className="mt-4 flex items-center gap-2">
+        <Botao onClick={corrigir} disabled={!todasRespondidas}>
+          {exercicioAtivo === "recuperacao" ? "Enviar Recuperação Paralela" : "Corrigir exercício"}
+        </Botao>
+        <Botao
+          variant="ghost"
+          onClick={() => {
+            setExercicioAtivo(null);
+            setRespostas({});
+          }}
+        >
+          Cancelar
+        </Botao>
+      </div>
+    </>
+  );
+
+  // Resumo mostrado no "tópico" fechado.
+  let resumo;
+  if (!souAluno) {
+    resumo = "Clique para conferir os exercícios (não grava nota).";
+  } else if (registro?.overrideProfessor) {
+    resumo = `Nota definida pelo professor(a): ${numFmt(registro.nota)}`;
+  } else if (notaFinal !== null && (mediaSatisfatoria || registro?.desistiu || registro?.notaRecuperacao != null)) {
+    resumo = `Concluído — nota final ${numFmt(notaFinal)}`;
+  } else if (precisaDeDecisao) {
+    resumo = `Média dos 3 exercícios: ${numFmt(mediaExercicios)} — Recuperação Paralela disponível`;
+  } else {
+    const feitos = notasExercicios.filter((n) => n !== null).length;
+    resumo = `${feitos} de 3 exercícios concluídos`;
+  }
+
+  return (
+    <div className="mt-8">
+      <button
+        type="button"
+        onClick={() => setAberto((a) => !a)}
+        className="w-full flex items-center justify-between text-left border-t border-line pt-4 pb-1"
+      >
+        <span className="text-base font-serif font-semibold text-ink">Atividade Avaliativa — {moduloLabel}</span>
+        <span className="text-xs text-inkSoft">{aberto ? "Fechar ▲" : "Abrir ▼"}</span>
+      </button>
+      <p className="text-xs text-inkSoft mb-2">{resumo}</p>
+
+      {aberto && (
+        <div className="mt-3">
+          {/* --- Quem não é Aluno: testa livremente, nunca grava nota. --- */}
+          {!souAluno && (
+            <>
+              {exercicioAtivo === null ? (
+                <div className="flex gap-2 flex-wrap">
+                  {banco.exercicios.map((_, i) => (
+                    <Botao key={i} variant="ghost" onClick={() => { setExercicioAtivo(i); setRespostas({}); setResultadoTeste(null); }}>
+                      Testar Exercício {i + 1}
+                    </Botao>
+                  ))}
+                  <Botao variant="ghost" onClick={() => { setExercicioAtivo("recuperacao"); setRespostas({}); setResultadoTeste(null); }}>
+                    Testar Recuperação (30 questões)
+                  </Botao>
+                </div>
+              ) : !resultadoTeste ? (
+                <Formulario />
+              ) : (
+                <div className="flex items-center gap-3 flex-wrap">
+                  <Card className="inline-block">
+                    <div className="text-sm text-ink">
+                      Acertos: <b>{resultadoTeste.acertos}</b> de <b>{resultadoTeste.total}</b> — nota:{" "}
+                      <b className={resultadoTeste.nota >= NOTA_MINIMA_SATISFATORIA ? "text-green" : "text-red"}>{numFmt(resultadoTeste.nota)}</b>
+                    </div>
+                  </Card>
+                  <Botao variant="ghost" onClick={() => { setRespostas({}); setResultadoTeste(null); setExercicioAtivo(null); }}>
+                    Voltar
+                  </Botao>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* --- Aluno: nota sobrescrita manualmente pelo professor — trava aqui. --- */}
+          {souAluno && registro?.overrideProfessor && (
+            <Card>
+              <div className="text-sm text-ink">
+                Nota definida manualmente pelo professor(a):{" "}
+                <b className={registro.nota >= NOTA_MINIMA_SATISFATORIA ? "text-green" : "text-red"}>{numFmt(registro.nota)}</b>
+              </div>
+              <p className="text-xs text-inkSoft mt-1.5">
+                Avaliado por {registro.avaliadoPor} em {fmtDateTime(registro.avaliadoEm)}.
+              </p>
+            </Card>
+          )}
+
+          {/* --- Aluno: respondendo um exercício ou a recuperação agora. --- */}
+          {souAluno && !registro?.overrideProfessor && exercicioAtivo !== null && <Formulario />}
+
+          {/* --- Aluno: visão normal (cards dos 3 exercícios + decisão/nota final). --- */}
+          {souAluno && !registro?.overrideProfessor && exercicioAtivo === null && (
+            <>
+              <div className="grid sm:grid-cols-3 gap-3 mb-3">
+                {banco.exercicios.map((perguntas, i) => {
+                  const notaEx = notasExercicios[i];
+                  const feito = notaEx !== null;
+                  return (
+                    <Card key={i} className={feito ? "" : "border-gold/40"}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-sm font-semibold text-ink">Exercício {i + 1}</span>
+                        {feito && <Pill tone="green">Corrigido</Pill>}
+                      </div>
+                      <p className="text-xs text-inkSoft mb-2">{perguntas.length} questões</p>
+                      {feito ? (
+                        <p className={"text-lg font-semibold " + (notaEx >= NOTA_MINIMA_SATISFATORIA ? "text-green" : "text-red")}>
+                          {numFmt(notaEx)}
+                        </p>
+                      ) : (
+                        <Botao onClick={() => { setExercicioAtivo(i); setRespostas({}); }}>Responder</Botao>
+                      )}
+                    </Card>
+                  );
+                })}
+              </div>
+
+              {todosExerciciosFeitos && !registro?.desistiu && registro?.notaRecuperacao == null && (
+                <Card className={mediaSatisfatoria ? "mb-3" : "mb-3 border-gold/40"}>
+                  <p className="text-sm text-ink">
+                    Média do módulo:{" "}
+                    <b className={mediaSatisfatoria ? "text-green" : "text-red"}>{numFmt(mediaExercicios)}</b>
+                    {!mediaSatisfatoria && ` — abaixo de ${numFmt(NOTA_MINIMA_SATISFATORIA)}`}
+                  </p>
+                </Card>
+              )}
+
+              {precisaDeDecisao && !confirmandoDesistencia && (
+                <div className="flex gap-2 flex-wrap">
+                  <Botao onClick={() => { setExercicioAtivo("recuperacao"); setRespostas({}); }}>
+                    Fazer Recuperação Paralela
+                  </Botao>
+                  <Botao variant="ghost" onClick={() => setConfirmandoDesistencia(true)}>
+                    Assinar Termo de Desistência
+                  </Botao>
+                </div>
+              )}
+
+              {precisaDeDecisao && confirmandoDesistencia && (
+                <Card className="border-gold/40">
+                  <p className="text-sm font-semibold text-ink mb-1.5">Termo de Desistência da Recuperação Paralela</p>
+                  <p className="text-xs text-inkSoft mb-3">
+                    Ao confirmar, você declara que optou por não realizar a Recuperação Paralela de "{moduloLabel}" e
+                    que sua nota final neste módulo será a média dos 3 exercícios ({numFmt(mediaExercicios)}), sem
+                    possibilidade de nova tentativa depois.
+                  </p>
+                  <label className="flex items-center gap-2 text-xs text-ink mb-3">
+                    <input type="checkbox" checked={aceiteTermo} onChange={(e) => setAceiteTermo(e.target.checked)} />
+                    Li e concordo com os termos acima.
+                  </label>
+                  <div className="flex gap-2">
+                    <Botao onClick={confirmarDesistencia} disabled={!aceiteTermo}>Confirmar desistência</Botao>
+                    <Botao variant="ghost" onClick={() => { setConfirmandoDesistencia(false); setAceiteTermo(false); }}>
+                      Voltar
+                    </Botao>
+                  </div>
+                </Card>
+              )}
+
+              {todosExerciciosFeitos && (mediaSatisfatoria || registro?.desistiu || registro?.notaRecuperacao != null) && (
+                <Card>
+                  <div className="text-sm text-ink space-y-1">
+                    <div>Média dos 3 exercícios: <b>{numFmt(mediaExercicios)}</b></div>
+                    {registro?.notaRecuperacao != null && (
+                      <div>Nota da Recuperação Paralela: <b>{numFmt(registro.notaRecuperacao)}</b></div>
+                    )}
+                    {registro?.desistiu && (
+                      <div className="text-inkSoft">
+                        Termo de Desistência assinado em {fmtDateTime(registro.desistenciaEm)} — recuperação não realizada.
+                      </div>
+                    )}
+                    <div className="pt-1 border-t border-line mt-1">
+                      Nota final do módulo: <b className={notaFinal >= NOTA_MINIMA_SATISFATORIA ? "text-green" : "text-red"}>{numFmt(notaFinal)}</b>
+                    </div>
+                  </div>
+                </Card>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function GestaoNotasView({ perfil, turmas, usuarios, empresas, notas, salvarNotas, registrarAuditoria }) {
   const souAluno = perfil?.tipo === "Aluno";
   const [turmaId, setTurmaId] = useState(souAluno ? perfil?.turmaId || "" : (turmas || [])[0]?.id || "");
@@ -6215,8 +6679,13 @@ function GestaoNotasView({ perfil, turmas, usuarios, empresas, notas, salvarNota
     const empresaDoAluno = (empresas || []).find((e) => e.alunoId === aluno.uid);
     let novasNotas;
     if (existente) {
+      // overrideProfessor:true avisa os componentes de Atividade Avaliativa
+      // (V1 e V2) para pararem de usar o status da tentativa automática, que
+      // pode estar desatualizado em relação a essa nota manual.
       novasNotas = (notas || []).map((n) =>
-        n.id === existente.id ? { ...n, nota: num, avaliadoPor: perfil.nome, avaliadoEm: Date.now() } : n
+        n.id === existente.id
+          ? { ...n, nota: num, overrideProfessor: true, avaliadoPor: perfil.nome, avaliadoEm: Date.now() }
+          : n
       );
     } else {
       novasNotas = [
@@ -6230,6 +6699,7 @@ function GestaoNotasView({ perfil, turmas, usuarios, empresas, notas, salvarNota
           moduloId: modulo.id,
           moduloLabel: modulo.label,
           nota: num,
+          overrideProfessor: true,
           avaliadoPor: perfil.nome,
           avaliadoEm: Date.now(),
         },
