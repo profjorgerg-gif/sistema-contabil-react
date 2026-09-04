@@ -3431,7 +3431,24 @@ function SeloFechamento({ ok, rotulo, formula }) {
 
 // ---- Balancete de Verificação ----
 
-function GestaoBalanceteView({ empresa, lancamentos, saldos, leaves, contaByCode, perfil, empresas, notas, salvarNotas, registrarAuditoria }) {
+function GestaoBalanceteView({
+  empresa,
+  lancamentos,
+  saldos,
+  leaves,
+  contaByCode,
+  perfil,
+  empresas,
+  notas,
+  salvarNotas,
+  registrarAuditoria,
+  turmas,
+  usuarios,
+  prazosAtividades,
+  salvarPrazosAtividades,
+  liberacoesExcecao,
+  salvarLiberacoesExcecao,
+}) {
   if (!empresa) return <div className="text-sm text-inkSoft italic">Selecione uma empresa ativa acima.</div>;
 
   let totDeb = 0, totCred = 0, totDev = 0, totCre = 0;
@@ -3495,7 +3512,7 @@ function GestaoBalanceteView({ empresa, lancamentos, saldos, leaves, contaByCode
           </tfoot>
         </table>
       </Card>
-      <AtividadeAvaliativa
+      <AtividadeAvaliativaV2
         moduloId="balancete"
         moduloLabel="Balancete de Verificação"
         perfil={perfil}
@@ -3503,6 +3520,12 @@ function GestaoBalanceteView({ empresa, lancamentos, saldos, leaves, contaByCode
         notas={notas}
         salvarNotas={salvarNotas}
         registrarAuditoria={registrarAuditoria}
+        turmas={turmas}
+        usuarios={usuarios}
+        prazosAtividades={prazosAtividades}
+        salvarPrazosAtividades={salvarPrazosAtividades}
+        liberacoesExcecao={liberacoesExcecao}
+        salvarLiberacoesExcecao={salvarLiberacoesExcecao}
       />
     </div>
   );
@@ -3510,7 +3533,22 @@ function GestaoBalanceteView({ empresa, lancamentos, saldos, leaves, contaByCode
 
 // ---- DRE ----
 
-function GestaoDREView({ empresa, lancamentos, saldos, perfil, empresas, notas, salvarNotas, registrarAuditoria }) {
+function GestaoDREView({
+  empresa,
+  lancamentos,
+  saldos,
+  perfil,
+  empresas,
+  notas,
+  salvarNotas,
+  registrarAuditoria,
+  turmas,
+  usuarios,
+  prazosAtividades,
+  salvarPrazosAtividades,
+  liberacoesExcecao,
+  salvarLiberacoesExcecao,
+}) {
   if (!empresa) return <div className="text-sm text-inkSoft italic">Selecione uma empresa ativa acima.</div>;
   const d = computeDRE(lancamentos, saldos);
 
@@ -3542,7 +3580,7 @@ function GestaoDREView({ empresa, lancamentos, saldos, perfil, empresas, notas, 
         <LinhaDRE label="(-) Provisão para IRPJ e CSLL" valor={d.provIRPJCSLL} tom="indent" />
         <LinhaDRE label="(=) RESULTADO LÍQUIDO DO EXERCÍCIO" valor={d.resultadoLiquido} tom="final" />
       </Card>
-      <AtividadeAvaliativa
+      <AtividadeAvaliativaV2
         moduloId="dre"
         moduloLabel="DRE"
         perfil={perfil}
@@ -3550,6 +3588,12 @@ function GestaoDREView({ empresa, lancamentos, saldos, perfil, empresas, notas, 
         notas={notas}
         salvarNotas={salvarNotas}
         registrarAuditoria={registrarAuditoria}
+        turmas={turmas}
+        usuarios={usuarios}
+        prazosAtividades={prazosAtividades}
+        salvarPrazosAtividades={salvarPrazosAtividades}
+        liberacoesExcecao={liberacoesExcecao}
+        salvarLiberacoesExcecao={salvarLiberacoesExcecao}
       />
     </div>
   );
@@ -3557,7 +3601,25 @@ function GestaoDREView({ empresa, lancamentos, saldos, perfil, empresas, notas, 
 
 // ---- Encerramento (ARE) ----
 
-function GestaoEncerramentoView({ empresa, lancamentos, saldos, perfil, salvarLancamentos, registrarAuditoria, leaves, contaByCode }) {
+function GestaoEncerramentoView({
+  empresa,
+  lancamentos,
+  saldos,
+  perfil,
+  salvarLancamentos,
+  registrarAuditoria,
+  leaves,
+  contaByCode,
+  empresas,
+  notas,
+  salvarNotas,
+  turmas,
+  usuarios,
+  prazosAtividades,
+  salvarPrazosAtividades,
+  liberacoesExcecao,
+  salvarLiberacoesExcecao,
+}) {
   const [fechando, setFechando] = useState(false);
   if (!empresa) return <div className="text-sm text-inkSoft italic">Selecione uma empresa ativa acima.</div>;
 
@@ -3734,6 +3796,21 @@ function GestaoEncerramentoView({ empresa, lancamentos, saldos, perfil, salvarLa
         Se preferir praticar manualmente, pode digitar cada lançamento você mesmo no módulo
         Lançamentos, usando os totais desta tabela como referência.
       </div>
+      <AtividadeAvaliativaV2
+        moduloId="encerramento"
+        moduloLabel="Encerramento (ARE)"
+        perfil={perfil}
+        empresas={empresas}
+        notas={notas}
+        salvarNotas={salvarNotas}
+        registrarAuditoria={registrarAuditoria}
+        turmas={turmas}
+        usuarios={usuarios}
+        prazosAtividades={prazosAtividades}
+        salvarPrazosAtividades={salvarPrazosAtividades}
+        liberacoesExcecao={liberacoesExcecao}
+        salvarLiberacoesExcecao={salvarLiberacoesExcecao}
+      />
     </div>
   );
 }
@@ -6008,6 +6085,234 @@ const AVALIACOES_V2 = {
       { tipo: "multipla", enunciado: "Entre as opções, qual conta é do grupo Receita?", opcoes: ["Receita de Vendas", "Despesas com Aluguel", "CMV", "Capital Subscrito"], correta: 0 },
     ],
   },
+
+  balancete: {
+    exercicios: [
+      // Exercício 1 — conceito e finalidade
+      [
+        { tipo: "multipla", enunciado: "A finalidade principal do Balancete de Verificação é:", opcoes: ["Divulgação externa obrigatória", "Conferir se o total de débitos bate com o total de créditos", "Calcular o IRPJ da empresa", "Substituir a DRE"], correta: 1 },
+        { tipo: "vf", enunciado: "O Balancete de Verificação é um relatório oficial de divulgação externa, como o Balanço Patrimonial.", correta: false },
+        { tipo: "multipla", enunciado: "O Balancete é, antes de tudo, uma ferramenta de:", opcoes: ["Divulgação para investidores", "Conferência interna das partidas dobradas", "Cálculo do lucro líquido", "Substituição do Livro Diário"], correta: 1 },
+        { tipo: "vf", enunciado: "O selo “Divergente” no Balancete indica que o total de débitos e o total de créditos não coincidem.", correta: true },
+        { tipo: "multipla", enunciado: "Quando o Balancete aparece “Divergente”, o próximo passo recomendado é:", opcoes: ["Ignorar e seguir para o Balanço", "Revisar os lançamentos até encontrar a diferença", "Excluir todas as contas", "Recriar a empresa do zero"], correta: 1 },
+        { tipo: "vf", enunciado: "Balancete de Verificação e Balanço Patrimonial são exatamente o mesmo relatório, só com nomes diferentes.", correta: false },
+        { tipo: "multipla", enunciado: "No ciclo contábil do sistema, o Balancete normalmente é conferido:", opcoes: ["Antes dos Lançamentos", "Depois dos Lançamentos e antes do Encerramento", "Depois do Encerramento", "No lugar da DRE"], correta: 1 },
+        { tipo: "vf", enunciado: "O Balancete é montado automaticamente a partir dos Lançamentos e Saldos Iniciais, sem digitação manual de valores.", correta: true },
+        { tipo: "multipla", enunciado: "O Balancete de Verificação é obrigatório apenas para:", opcoes: ["Empresas de grande porte", "Nenhuma — é uma ferramenta interna sempre disponível", "Empresas do Simples Nacional", "Empresas com prejuízo no período"], correta: 1 },
+        { tipo: "vf", enunciado: "Se o total de débitos for igual ao total de créditos no Balancete, isso garante que não existe nenhum erro de lançamento (por exemplo, conta trocada).", correta: false },
+      ],
+      // Exercício 2 — mecânica e exibição
+      [
+        { tipo: "multipla", enunciado: "Quais contas aparecem listadas no Balancete de Verificação do sistema?", opcoes: ["Todas as contas do plano, mesmo zeradas", "Só as contas com movimento no período", "Só as contas de Ativo", "Só as contas Sintéticas"], correta: 1 },
+        { tipo: "vf", enunciado: "Contas sem nenhum lançamento no período aparecem no Balancete, mas com saldo zerado.", correta: false },
+        { tipo: "multipla", enunciado: "As colunas típicas de um Balancete mostram:", opcoes: ["Só o nome da conta", "Débito, crédito e saldo devedor/credor", "Só a natureza da conta", "Data de criação da conta"], correta: 1 },
+        { tipo: "vf", enunciado: "O total devedor de uma conta no Balancete soma todos os débitos do período, incluindo o saldo inicial (se for devedor).", correta: true },
+        { tipo: "multipla", enunciado: "Uma conta de natureza Devedora pode aparecer no Balancete com saldo credor?", opcoes: ["Nunca, é impossível", "Sim, se o total de créditos do período superar o de débitos", "Só se houver erro de sistema", "Só depois do Encerramento"], correta: 1 },
+        { tipo: "vf", enunciado: "O Balancete não depende do Plano de Contas — usa só os dados dos Lançamentos.", correta: false },
+        { tipo: "multipla", enunciado: "Quais módulos alimentam diretamente os valores exibidos no Balancete?", opcoes: ["Só o Balanço Patrimonial", "Lançamentos e Saldos Iniciais", "Só a DRE", "Só o Controle de Estoque"], correta: 1 },
+        { tipo: "vf", enunciado: "É possível um Balancete “bater” (débito = crédito) mesmo com um lançamento feito na conta errada, desde que o valor esteja certo nos dois lados.", correta: true },
+        { tipo: "multipla", enunciado: "No rodapé do Balancete, num lançamento correto, o total de débitos e o total de créditos devem ser:", opcoes: ["Sempre diferentes", "Sempre iguais", "Iguais só no fim do ano", "Iguais só depois do Encerramento"], correta: 1 },
+        { tipo: "vf", enunciado: "O Balancete de Verificação também é conhecido como uma ferramenta de checagem das partidas dobradas.", correta: true },
+      ],
+      // Exercício 3 — aplicação prática e diagnóstico
+      [
+        { tipo: "multipla", enunciado: "Se o Balancete estiver “Divergente”, a causa mais provável é:", opcoes: ["Um lançamento com valores diferentes entre débito e crédito", "Um erro de digitação no nome da empresa", "Um problema no navegador", "Nunca há erro real no sistema"], correta: 0 },
+        { tipo: "vf", enunciado: "Um erro de “conta trocada” (lançar na conta errada, mas com o valor certo nos dois lados) não aparece como “Divergente” no Balancete.", correta: true },
+        { tipo: "multipla", enunciado: "Depois de corrigir um lançamento com erro, o que se deve fazer com o Balancete?", opcoes: ["Excluí-lo", "Conferi-lo novamente", "Ignorá-lo", "Imprimi-lo sem revisar"], correta: 1 },
+        { tipo: "vf", enunciado: "O Balancete deve ser conferido antes de seguir para o Encerramento do exercício.", correta: true },
+        { tipo: "multipla", enunciado: "Se um aluno esquecer de registrar um Saldo Inicial e sua contrapartida (Capital Subscrito), o efeito mais provável no Balancete é:", opcoes: ["Nenhum efeito", "Pode gerar Divergência entre débitos e créditos", "Exclui a empresa automaticamente", "Gera erro de sistema, não de contabilidade"], correta: 1 },
+        { tipo: "vf", enunciado: "Revisar o Balancete é uma etapa opcional — o aluno pode pular direto para a DRE sem conferir nada.", correta: false },
+        { tipo: "multipla", enunciado: "No sistema, quem pode ver o Balancete de uma determinada empresa?", opcoes: ["Só o usuário Mestre", "O dono da empresa e Mestre/Professor", "Qualquer aluno de qualquer empresa", "Ninguém, é só interno"], correta: 1 },
+        { tipo: "vf", enunciado: "O Balancete se atualiza automaticamente se um lançamento antigo for editado ou excluído.", correta: true },
+        { tipo: "multipla", enunciado: "Qual é o primeiro lugar recomendado para investigar quando o Balancete não bate?", opcoes: ["Plano de Contas", "O Livro Diário, no módulo Lançamentos", "Manual do Aluno", "Central de Suporte"], correta: 1 },
+        { tipo: "vf", enunciado: "Um Balancete “batido” (débito = crédito) garante que não existe nenhum erro conceitual de contabilização.", correta: false },
+      ],
+    ],
+    recuperacao: [
+      { tipo: "multipla", enunciado: "O Balancete de Verificação serve principalmente para:", opcoes: ["Substituir o Balanço Patrimonial", "Conferir se débitos e créditos batem", "Calcular impostos", "Cadastrar novas contas"], correta: 1 },
+      { tipo: "vf", enunciado: "O Balancete é enviado oficialmente a órgãos externos, como a Receita Federal.", correta: false },
+      { tipo: "multipla", enunciado: "O Balancete funciona, na prática, como uma ferramenta de:", opcoes: ["Marketing da empresa", "Checagem interna das partidas dobradas", "Emissão de nota fiscal", "Cálculo de folha de pagamento"], correta: 1 },
+      { tipo: "vf", enunciado: "Quando o total de débitos difere do total de créditos, o Balancete mostra o selo “Divergente”.", correta: true },
+      { tipo: "multipla", enunciado: "Ao encontrar um Balancete “Divergente”, o correto é:", opcoes: ["Seguir para o Balanço mesmo assim", "Revisar os lançamentos até achar a diferença", "Apagar todos os lançamentos", "Trocar de empresa"], correta: 1 },
+      { tipo: "vf", enunciado: "O Balanço Patrimonial e o Balancete de Verificação têm exatamente a mesma finalidade.", correta: false },
+      { tipo: "multipla", enunciado: "Na sequência do ciclo contábil, o Balancete normalmente vem:", opcoes: ["Antes do Plano de Contas", "Depois dos Lançamentos, antes do Encerramento", "Depois do Balanço Patrimonial", "No lugar dos Saldos Iniciais"], correta: 1 },
+      { tipo: "vf", enunciado: "Os valores do Balancete são digitados manualmente pelo aluno, um a um.", correta: false },
+      { tipo: "multipla", enunciado: "O Balancete de Verificação é obrigatório para:", opcoes: ["Só empresas grandes", "Nenhum porte específico — é ferramenta interna de sempre", "Só empresas com prejuízo", "Só empresas do Simples"], correta: 1 },
+      { tipo: "vf", enunciado: "Bater o total de débitos com o de créditos garante, sozinho, que não há nenhum erro de lançamento.", correta: false },
+      { tipo: "multipla", enunciado: "No Balancete do sistema, aparecem:", opcoes: ["Todas as contas do plano, mesmo sem movimento", "Só as contas com movimento no período", "Só contas de Ativo e Passivo", "Só contas Sintéticas"], correta: 1 },
+      { tipo: "vf", enunciado: "Uma conta sem nenhum lançamento no período aparece no Balancete com saldo R$ 0,00.", correta: false },
+      { tipo: "multipla", enunciado: "As colunas de um Balancete mostram, tipicamente:", opcoes: ["Débito, crédito e saldo devedor/credor", "Só o total geral da empresa", "Só a natureza da conta", "Data de criação da empresa"], correta: 0 },
+      { tipo: "vf", enunciado: "O total devedor de uma conta no Balancete inclui o saldo inicial dela, se ele for devedor.", correta: true },
+      { tipo: "multipla", enunciado: "Uma conta de natureza Devedora pode terminar o período com saldo credor no Balancete?", opcoes: ["Não, nunca", "Sim, se os créditos do período superarem os débitos", "Só depois de encerrada", "Só se for conta Sintética"], correta: 1 },
+      { tipo: "vf", enunciado: "O Balancete usa dados só dos Lançamentos, sem depender do Plano de Contas.", correta: false },
+      { tipo: "multipla", enunciado: "Que módulos alimentam os valores mostrados no Balancete?", opcoes: ["Só a DRE", "Lançamentos e Saldos Iniciais", "Só o Balanço", "Só o Controle de Estoque"], correta: 1 },
+      { tipo: "vf", enunciado: "Um Balancete pode “bater” mesmo com um lançamento feito na conta errada, desde que o valor seja igual nos dois lados.", correta: true },
+      { tipo: "multipla", enunciado: "No rodapé de um Balancete correto, débitos e créditos devem ser:", opcoes: ["Sempre diferentes", "Sempre iguais", "Iguais só no fechamento", "Nunca comparados"], correta: 1 },
+      { tipo: "vf", enunciado: "O Balancete de Verificação também funciona como checagem das partidas dobradas.", correta: true },
+      { tipo: "multipla", enunciado: "A causa mais provável de um Balancete “Divergente” é:", opcoes: ["Um lançamento com valores diferentes entre débito e crédito", "Um erro de digitação no nome da turma", "Falta de conexão com a internet", "Erro do navegador"], correta: 0 },
+      { tipo: "vf", enunciado: "Um erro de “conta trocada” (valor certo, conta errada) nunca aparece como Divergente no Balancete.", correta: true },
+      { tipo: "multipla", enunciado: "Depois de corrigir um erro de lançamento, o que fazer com o Balancete?", opcoes: ["Excluí-lo", "Conferir novamente", "Ignorar", "Imprimir sem revisar"], correta: 1 },
+      { tipo: "vf", enunciado: "É recomendável conferir o Balancete antes de seguir para o Encerramento do exercício.", correta: true },
+      { tipo: "multipla", enunciado: "Esquecer o Saldo Inicial de uma conta (sem lançar a contrapartida) pode causar no Balancete:", opcoes: ["Nenhum efeito", "Uma possível Divergência", "Exclusão automática da empresa", "Um erro só visual, sem importância"], correta: 1 },
+      { tipo: "vf", enunciado: "É possível pular a conferência do Balancete e ir direto para a DRE sem problema algum.", correta: false },
+      { tipo: "multipla", enunciado: "Quem pode ver o Balancete de uma empresa específica no sistema?", opcoes: ["Só o Mestre", "O dono da empresa e Mestre/Professor", "Qualquer aluno de qualquer turma", "Ninguém além do próprio sistema"], correta: 1 },
+      { tipo: "vf", enunciado: "Editar ou excluir um lançamento antigo atualiza o Balancete automaticamente.", correta: true },
+      { tipo: "multipla", enunciado: "Quando o Balancete não bate, o primeiro lugar recomendado para investigar é:", opcoes: ["O Plano de Contas", "O Livro Diário, em Lançamentos", "O Manual do Aluno", "A Central de Suporte"], correta: 1 },
+      { tipo: "vf", enunciado: "Um Balancete “batido” garante, sozinho, que não existe nenhum erro conceitual na contabilização.", correta: false },
+    ],
+  },
+
+  dre: {
+    exercicios: [
+      // Exercício 1 — estrutura geral e sequência
+      [
+        { tipo: "multipla", enunciado: "A DRE parte de qual valor no topo da demonstração?", opcoes: ["Resultado Líquido do Exercício", "Receita Bruta de Vendas e Serviços", "Patrimônio Líquido", "Total do Ativo"], correta: 1 },
+        { tipo: "vf", enunciado: "O Resultado Líquido do Exercício, calculado na DRE, aparece novamente no Balanço Patrimonial, do lado do Passivo + Patrimônio Líquido.", correta: true },
+        { tipo: "multipla", enunciado: "Partindo da Receita Bruta, o próximo passo da DRE é subtrair:", opcoes: ["O CMV", "As Deduções da Receita", "As Despesas Administrativas", "A Provisão de IRPJ/CSLL"], correta: 1 },
+        { tipo: "vf", enunciado: "A Receita Líquida é calculada subtraindo as Deduções da Receita Bruta.", correta: true },
+        { tipo: "multipla", enunciado: "O Resultado Bruto é obtido subtraindo, da Receita Líquida:", opcoes: ["As Despesas Financeiras", "O CMV (Custo da Mercadoria Vendida)", "A Provisão de IRPJ/CSLL", "O Patrimônio Líquido"], correta: 1 },
+        { tipo: "vf", enunciado: "Na DRE, o Resultado Operacional aparece antes do Resultado Bruto.", correta: false },
+        { tipo: "multipla", enunciado: "A última linha da DRE é:", opcoes: ["Resultado Bruto", "Resultado Operacional", "Resultado Líquido do Exercício", "Receita Líquida"], correta: 2 },
+        { tipo: "vf", enunciado: "A DRE é calculada manualmente pelo aluno e precisa ser digitada linha por linha no sistema.", correta: false },
+        { tipo: "multipla", enunciado: "Se a Receita Líquida for R$ 3.500,00 e não houver CMV nem despesas, qual será o Resultado Líquido do Exercício?", opcoes: ["R$ 0,00", "R$ 3.500,00", "Depende do Balanço Patrimonial", "Não é possível calcular"], correta: 1 },
+        { tipo: "vf", enunciado: "A Provisão para IRPJ e CSLL é subtraída antes de chegar ao Resultado Líquido do Exercício.", correta: true },
+      ],
+      // Exercício 2 — contas e grupos que alimentam cada linha
+      [
+        { tipo: "multipla", enunciado: "A linha “Receita Bruta” da DRE é alimentada pelas contas do grupo/subgrupo:", opcoes: ["4.1.1 (Receita de Vendas)", "5.1 (Despesas Administrativas)", "6.2 (CMV)", "3.1 (Capital)"], correta: 0 },
+        { tipo: "vf", enunciado: "O CMV que aparece na DRE vem das contas do subgrupo 6.2 (Custos).", correta: true },
+        { tipo: "multipla", enunciado: "As Despesas Administrativas, na DRE, vêm de contas do subgrupo:", opcoes: ["5.1", "5.2", "5.3", "5.4"], correta: 0 },
+        { tipo: "vf", enunciado: "As Despesas Comerciais (subgrupo 5.2) entram na DRE antes do Resultado Bruto ser calculado.", correta: false },
+        { tipo: "multipla", enunciado: "As Receitas Financeiras, na DRE, vêm do subgrupo:", opcoes: ["4.1", "4.2", "4.3", "4.4"], correta: 2 },
+        { tipo: "vf", enunciado: "As Despesas Financeiras (5.3) são subtraídas do resultado, junto com as Receitas Financeiras (4.3), antes de chegar ao Resultado Operacional.", correta: true },
+        { tipo: "multipla", enunciado: "Os Ganhos de Capital, na DRE, somam os subgrupos:", opcoes: ["4.5 e 4.6", "5.1 e 5.2", "6.1 e 6.2", "3.1 e 3.9"], correta: 0 },
+        { tipo: "vf", enunciado: "A Provisão para IRPJ e CSLL vem do subgrupo 7.2 do plano de contas.", correta: true },
+        { tipo: "multipla", enunciado: "As Deduções da Receita Bruta (que reduzem a Receita Bruta) vêm do subgrupo:", opcoes: ["4.1", "4.2", "4.3", "5.1"], correta: 1 },
+        { tipo: "vf", enunciado: "Outras Despesas (subgrupo 5.4) entram na DRE depois do cálculo do Resultado Operacional, junto com os Ganhos de Capital.", correta: true },
+      ],
+      // Exercício 3 — cálculo prático
+      [
+        { tipo: "multipla", enunciado: "Se a Receita Bruta for R$ 10.000,00 e as Deduções forem R$ 1.000,00, a Receita Líquida é:", opcoes: ["R$ 11.000,00", "R$ 9.000,00", "R$ 10.000,00", "R$ 1.000,00"], correta: 1 },
+        { tipo: "vf", enunciado: "Se a Receita Líquida for R$ 9.000,00 e o CMV for R$ 4.000,00, o Resultado Bruto é R$ 5.000,00.", correta: true },
+        { tipo: "multipla", enunciado: "Com Resultado Bruto de R$ 5.000,00, Despesas Administrativas de R$ 1.200,00 e Despesas Comerciais de R$ 800,00 (sem outras receitas operacionais), o resultado antes das financeiras é:", opcoes: ["R$ 7.000,00", "R$ 3.000,00", "R$ 5.000,00", "R$ 2.000,00"], correta: 1 },
+        { tipo: "vf", enunciado: "Receitas Financeiras aumentam o resultado da DRE, enquanto Despesas Financeiras o reduzem.", correta: true },
+        { tipo: "multipla", enunciado: "Se o Resultado Operacional for R$ 2.500,00, sem Ganhos de Capital nem Outras Despesas, o Resultado antes do IRPJ/CSLL é:", opcoes: ["R$ 0,00", "R$ 2.500,00", "Depende da Provisão de IRPJ", "Não é possível calcular"], correta: 1 },
+        { tipo: "vf", enunciado: "Se a Provisão para IRPJ e CSLL for R$ 500,00 e o Resultado antes do IRPJ/CSLL for R$ 2.500,00, o Resultado Líquido do Exercício é R$ 2.000,00.", correta: true },
+        { tipo: "multipla", enunciado: "Se uma empresa tiver só Receita Líquida de R$ 6.000,00 e nenhuma outra movimentação de resultado, o Resultado Líquido do Exercício será:", opcoes: ["R$ 0,00", "R$ 6.000,00", "Indefinido", "Depende do Balancete"], correta: 1 },
+        { tipo: "vf", enunciado: "Um resultado negativo (prejuízo) na DRE é matematicamente possível e o sistema calcula normalmente.", correta: true },
+        { tipo: "multipla", enunciado: "Se o CMV for maior que a Receita Líquida, o Resultado Bruto será:", opcoes: ["Sempre positivo", "Negativo", "Sempre zero", "Impossível de calcular"], correta: 1 },
+        { tipo: "vf", enunciado: "O valor do Resultado Líquido do Exercício calculado na DRE é o mesmo valor usado no Encerramento (ARE) para destinar o resultado ao Patrimônio Líquido.", correta: true },
+      ],
+    ],
+    recuperacao: [
+      { tipo: "multipla", enunciado: "A DRE começa, no topo, com qual valor?", opcoes: ["Total do Ativo", "Receita Bruta de Vendas e Serviços", "Resultado Líquido do Exercício", "Patrimônio Líquido"], correta: 1 },
+      { tipo: "vf", enunciado: "O Resultado Líquido do Exercício da DRE reaparece no Balanço Patrimonial, do lado do Passivo + PL.", correta: true },
+      { tipo: "multipla", enunciado: "Depois da Receita Bruta, a DRE subtrai:", opcoes: ["As Deduções da Receita", "O CMV diretamente", "A Provisão de IRPJ", "O Patrimônio Líquido"], correta: 0 },
+      { tipo: "vf", enunciado: "A Receita Líquida é a Receita Bruta menos as Deduções.", correta: true },
+      { tipo: "multipla", enunciado: "O Resultado Bruto vem da Receita Líquida menos:", opcoes: ["As Despesas Financeiras", "O CMV", "A Provisão de IRPJ/CSLL", "O Ativo Total"], correta: 1 },
+      { tipo: "vf", enunciado: "Na DRE do sistema, o Resultado Operacional vem antes do Resultado Bruto.", correta: false },
+      { tipo: "multipla", enunciado: "A última linha calculada na DRE é:", opcoes: ["Receita Líquida", "Resultado Bruto", "Resultado Líquido do Exercício", "Resultado Operacional"], correta: 2 },
+      { tipo: "vf", enunciado: "O aluno precisa digitar manualmente cada linha da DRE no sistema.", correta: false },
+      { tipo: "multipla", enunciado: "Se a Receita Líquida for R$ 4.000,00 sem nenhum CMV ou despesa, o Resultado Líquido será:", opcoes: ["R$ 0,00", "R$ 4.000,00", "Depende do Balanço", "Indefinido"], correta: 1 },
+      { tipo: "vf", enunciado: "A Provisão de IRPJ e CSLL é subtraída antes do Resultado Líquido do Exercício.", correta: true },
+      { tipo: "multipla", enunciado: "A Receita Bruta da DRE vem das contas do subgrupo:", opcoes: ["4.1.1", "5.1", "6.2", "3.1"], correta: 0 },
+      { tipo: "vf", enunciado: "O CMV mostrado na DRE vem das contas do subgrupo 6.2.", correta: true },
+      { tipo: "multipla", enunciado: "As Despesas Administrativas vêm do subgrupo:", opcoes: ["5.1", "5.2", "5.3", "4.4"], correta: 0 },
+      { tipo: "vf", enunciado: "As Despesas Comerciais entram na DRE antes de calcular o Resultado Bruto.", correta: false },
+      { tipo: "multipla", enunciado: "As Receitas Financeiras vêm do subgrupo:", opcoes: ["4.1", "4.2", "4.3", "5.3"], correta: 2 },
+      { tipo: "vf", enunciado: "Receitas e Despesas Financeiras entram no cálculo antes do Resultado Operacional.", correta: true },
+      { tipo: "multipla", enunciado: "Os Ganhos de Capital somam os subgrupos:", opcoes: ["4.5 e 4.6", "5.1 e 5.2", "6.1 e 6.2", "7.1 e 7.2"], correta: 0 },
+      { tipo: "vf", enunciado: "A Provisão de IRPJ/CSLL vem do subgrupo 7.2.", correta: true },
+      { tipo: "multipla", enunciado: "As Deduções da Receita Bruta vêm do subgrupo:", opcoes: ["4.1", "4.2", "4.3", "5.4"], correta: 1 },
+      { tipo: "vf", enunciado: "Outras Despesas (5.4) entram depois do Resultado Operacional, com os Ganhos de Capital.", correta: true },
+      { tipo: "multipla", enunciado: "Receita Bruta de R$ 8.000,00 e Deduções de R$ 800,00 dão uma Receita Líquida de:", opcoes: ["R$ 8.800,00", "R$ 7.200,00", "R$ 8.000,00", "R$ 800,00"], correta: 1 },
+      { tipo: "vf", enunciado: "Receita Líquida de R$ 7.000,00 e CMV de R$ 3.000,00 resultam em Resultado Bruto de R$ 4.000,00.", correta: true },
+      { tipo: "multipla", enunciado: "Resultado Bruto de R$ 4.000,00, Despesas Administrativas de R$ 900,00 e Comerciais de R$ 600,00 (sem outras receitas) resultam em:", opcoes: ["R$ 5.500,00", "R$ 2.500,00", "R$ 4.000,00", "R$ 1.500,00"], correta: 1 },
+      { tipo: "vf", enunciado: "Despesas Financeiras reduzem o resultado da DRE, enquanto Receitas Financeiras o aumentam.", correta: true },
+      { tipo: "multipla", enunciado: "Resultado Operacional de R$ 2.000,00 sem Ganhos de Capital nem Outras Despesas resulta em Resultado antes do IRPJ de:", opcoes: ["R$ 0,00", "R$ 2.000,00", "Depende da Provisão", "Indefinido"], correta: 1 },
+      { tipo: "vf", enunciado: "Provisão de IRPJ/CSLL de R$ 400,00 sobre Resultado antes do IRPJ de R$ 2.000,00 dá Resultado Líquido de R$ 1.600,00.", correta: true },
+      { tipo: "multipla", enunciado: "Se uma empresa só tiver Receita Líquida de R$ 5.000,00, sem nenhuma outra movimentação, o Resultado Líquido será:", opcoes: ["R$ 0,00", "R$ 5.000,00", "Indefinido", "Depende do Encerramento"], correta: 1 },
+      { tipo: "vf", enunciado: "Um resultado negativo (prejuízo) é matematicamente possível na DRE e o sistema calcula normalmente.", correta: true },
+      { tipo: "multipla", enunciado: "Se o CMV superar a Receita Líquida, o Resultado Bruto será:", opcoes: ["Sempre positivo", "Negativo", "Sempre zero", "Impossível"], correta: 1 },
+      { tipo: "vf", enunciado: "O Resultado Líquido do Exercício da DRE é o mesmo valor usado depois no Encerramento (ARE) para destinar ao Patrimônio Líquido.", correta: true },
+    ],
+  },
+
+  encerramento: {
+    exercicios: [
+      // Exercício 1 — conceito e finalidade do Encerramento/ARE
+      [
+        { tipo: "multipla", enunciado: "A finalidade do Encerramento do exercício é:", opcoes: ["Excluir a empresa", "Zerar as contas de Receita, Despesa e Custo e apurar o resultado", "Gerar o Balancete", "Cadastrar novas contas"], correta: 1 },
+        { tipo: "vf", enunciado: "ARE significa Apuração do Resultado do Exercício.", correta: true },
+        { tipo: "multipla", enunciado: "No sistema, a conta usada para concentrar o Encerramento das contas de resultado é:", opcoes: ["1.1.1.01 (Caixa Geral)", "7.1.01 (ARE)", "3.1.01 (Capital Subscrito)", "4.1.1.01 (Receita de Vendas)"], correta: 1 },
+        { tipo: "vf", enunciado: "O Encerramento normalmente é feito depois de conferir o Balancete e a DRE.", correta: true },
+        { tipo: "multipla", enunciado: "Quais grupos de contas são encerrados (zerados) no Encerramento do exercício?", opcoes: ["Ativo, Passivo e PL", "Receita (4), Despesa (5) e Custo (6)", "Só Receita", "Só Despesa"], correta: 1 },
+        { tipo: "vf", enunciado: "Depois do Encerramento, as contas de Receita, Despesa e Custo ficam com saldo zerado para o próximo período.", correta: true },
+        { tipo: "multipla", enunciado: "O resultado apurado no Encerramento (lucro ou prejuízo) é destinado para:", opcoes: ["O Ativo Circulante", "O Patrimônio Líquido", "O Passivo Circulante", "As contas de Estoque"], correta: 1 },
+        { tipo: "vf", enunciado: "O Encerramento é uma etapa isolada, sem nenhuma relação com o que foi calculado na DRE.", correta: false },
+        { tipo: "multipla", enunciado: "No sistema, o botão que faz o Encerramento sozinho, sem digitação manual, chama-se:", opcoes: ["Salvar saldos iniciais", "Fechar automaticamente", "Gerar Balancete", "Exportar relatório"], correta: 1 },
+        { tipo: "vf", enunciado: "Os lançamentos gerados pelo “Fechar automaticamente” ficam salvos no Livro Diário normalmente, podendo ser conferidos e editados depois.", correta: true },
+      ],
+      // Exercício 2 — mecânica dos lançamentos de encerramento
+      [
+        { tipo: "multipla", enunciado: "Ao encerrar uma conta de Receita (que tem saldo credor), o sistema lança:", opcoes: ["Débito na própria conta, crédito na 7.1.01", "Crédito na própria conta, débito na 7.1.01", "Débito e crédito na mesma conta", "Nenhum lançamento é feito"], correta: 0 },
+        { tipo: "vf", enunciado: "Ao encerrar uma conta de Despesa ou Custo (que tem saldo devedor), o sistema credita a própria conta e debita a 7.1.01.", correta: true },
+        { tipo: "multipla", enunciado: "Se o resultado do exercício for lucro, o lançamento de destinação é:", opcoes: ["Débito na 7.1.01, crédito na conta de resultado do PL", "Crédito na 7.1.01, débito na conta de resultado do PL", "Débito e crédito ficam na 7.1.01", "Não há lançamento de destinação em caso de lucro"], correta: 0 },
+        { tipo: "vf", enunciado: "Se o resultado do exercício for prejuízo, o lançamento de destinação inverte: debita a conta de resultado do PL e credita a 7.1.01.", correta: true },
+        { tipo: "multipla", enunciado: "No sistema, a conta de Patrimônio Líquido usada para receber o resultado do exercício é a:", opcoes: ["1.1.1.01", "3.9", "5.1", "6.2"], correta: 1 },
+        { tipo: "vf", enunciado: "Depois de todas as contas de resultado serem encerradas, a conta 7.1.01 (ARE) deve terminar zerada, já que seu saldo foi todo destinado ao PL.", correta: true },
+        { tipo: "multipla", enunciado: "Se uma empresa não tiver nenhum saldo em contas de Receita, Despesa ou Custo, o botão “Fechar automaticamente”:", opcoes: ["Gera um erro grave", "Avisa que não há saldo em contas de resultado para encerrar", "Fecha mesmo assim, sem nenhum lançamento", "Exclui a empresa"], correta: 1 },
+        { tipo: "vf", enunciado: "Cada conta de Receita, Despesa ou Custo com movimento gera um lançamento de encerramento próprio, um por conta.", correta: true },
+        { tipo: "multipla", enunciado: "O valor lançado no encerramento de cada conta de resultado corresponde:", opcoes: ["A um valor fixo padrão", "Ao saldo daquela conta no período", "À média de todas as contas", "Ao total do Ativo"], correta: 1 },
+        { tipo: "vf", enunciado: "É possível editar ou excluir, em Lançamentos, um lançamento gerado automaticamente pelo Encerramento.", correta: true },
+      ],
+      // Exercício 3 — aplicação prática
+      [
+        { tipo: "multipla", enunciado: "Antes de clicar em “Fechar automaticamente”, é recomendável conferir:", opcoes: ["Só o Plano de Contas", "O Balancete e a DRE", "Só o Manual do Aluno", "Nada, pode clicar direto"], correta: 1 },
+        { tipo: "vf", enunciado: "Depois do Encerramento, o resultado apurado deve aparecer refletido no Balanço Patrimonial, dentro do Patrimônio Líquido.", correta: true },
+        { tipo: "multipla", enunciado: "Se o Encerramento for feito com um erro em algum lançamento anterior ainda não corrigido, o resultado do exercício:", opcoes: ["Corrige-se sozinho automaticamente", "Sai errado, refletindo o erro original", "É ignorado pelo sistema", "Impede o Encerramento de acontecer"], correta: 1 },
+        { tipo: "vf", enunciado: "Depois de um Encerramento malfeito (com erro), o aluno pode corrigir o lançamento errado em Lançamentos e conferir os relatórios novamente.", correta: true },
+        { tipo: "multipla", enunciado: "O Encerramento (ARE) e a DRE têm a mesma finalidade — calcular o resultado do exercício de duas formas diferentes?", opcoes: ["Não têm relação nenhuma", "Sim: a DRE apresenta o resultado, o Encerramento o operacionaliza contabilmente", "São exatamente o mesmo relatório", "O Encerramento substitui totalmente a DRE"], correta: 1 },
+        { tipo: "vf", enunciado: "É possível rodar “Fechar automaticamente” mais de uma vez, se novos lançamentos de resultado forem feitos depois do primeiro encerramento.", correta: true },
+        { tipo: "multipla", enunciado: "Quem consegue usar o botão “Fechar automaticamente” na empresa de um aluno?", opcoes: ["Só o Mestre, nunca o aluno", "O próprio aluno, dono da empresa (e Mestre/Professor)", "Qualquer aluno, de qualquer empresa", "Ninguém, é só ilustrativo"], correta: 1 },
+        { tipo: "vf", enunciado: "Depois do Encerramento, as contas de Receita, Despesa e Custo continuam acumulando saldo do período anterior, sem zerar.", correta: false },
+        { tipo: "multipla", enunciado: "Se a empresa teve lucro no período, a conta de Patrimônio Líquido (3.9) deve:", opcoes: ["Diminuir de saldo", "Aumentar de saldo", "Ficar zerada", "Ser excluída"], correta: 1 },
+        { tipo: "vf", enunciado: "O Encerramento é a etapa que “fecha” contabilmente o exercício, ligando o resultado calculado na DRE ao Balanço Patrimonial.", correta: true },
+      ],
+    ],
+    recuperacao: [
+      { tipo: "multipla", enunciado: "A finalidade do Encerramento do exercício é:", opcoes: ["Cadastrar contas novas", "Zerar as contas de resultado e apurar o lucro ou prejuízo", "Excluir lançamentos antigos", "Gerar o Plano de Contas"], correta: 1 },
+      { tipo: "vf", enunciado: "A sigla ARE significa Apuração do Resultado do Exercício.", correta: true },
+      { tipo: "multipla", enunciado: "A conta usada para concentrar os lançamentos de Encerramento é a:", opcoes: ["1.1.1.01", "7.1.01", "3.1.01", "4.1.1.01"], correta: 1 },
+      { tipo: "vf", enunciado: "O Encerramento costuma ser feito depois de conferir o Balancete e a DRE.", correta: true },
+      { tipo: "multipla", enunciado: "Quais grupos de contas são zerados no Encerramento?", opcoes: ["Ativo e Passivo", "Receita, Despesa e Custo", "Só Patrimônio Líquido", "Só Ativo"], correta: 1 },
+      { tipo: "vf", enunciado: "Depois do Encerramento, as contas de resultado ficam zeradas para o próximo período.", correta: true },
+      { tipo: "multipla", enunciado: "O resultado apurado no Encerramento vai para:", opcoes: ["O Ativo Não Circulante", "O Patrimônio Líquido", "O Passivo Circulante", "O Estoque"], correta: 1 },
+      { tipo: "vf", enunciado: "O Encerramento não tem nenhuma relação com o que foi calculado na DRE.", correta: false },
+      { tipo: "multipla", enunciado: "O botão que faz o Encerramento automaticamente, sem digitação manual, chama-se:", opcoes: ["Fechar automaticamente", "Salvar saldos", "Gerar relatório", "Exportar backup"], correta: 0 },
+      { tipo: "vf", enunciado: "Os lançamentos do “Fechar automaticamente” ficam salvos no Livro Diário, podendo ser conferidos depois.", correta: true },
+      { tipo: "multipla", enunciado: "Ao encerrar uma conta de Receita (saldo credor), o sistema lança:", opcoes: ["Débito na própria conta, crédito na 7.1.01", "Crédito na própria conta, débito na 7.1.01", "Só débito, sem contrapartida", "Nada, receitas não se encerram"], correta: 0 },
+      { tipo: "vf", enunciado: "Ao encerrar uma conta de Despesa (saldo devedor), credita-se a conta e debita-se a 7.1.01.", correta: true },
+      { tipo: "multipla", enunciado: "Se o resultado for lucro, a destinação lança:", opcoes: ["Débito na 7.1.01, crédito na conta de PL", "Crédito na 7.1.01, débito na conta de PL", "Só na 7.1.01, nos dois lados", "Não há lançamento em caso de lucro"], correta: 0 },
+      { tipo: "vf", enunciado: "Se o resultado for prejuízo, o lançamento se inverte: débito na conta de PL, crédito na 7.1.01.", correta: true },
+      { tipo: "multipla", enunciado: "A conta de Patrimônio Líquido que recebe o resultado do exercício é a:", opcoes: ["1.1.1.01", "3.9", "5.1", "6.2"], correta: 1 },
+      { tipo: "vf", enunciado: "Depois de todo o Encerramento, a conta 7.1.01 deve terminar zerada.", correta: true },
+      { tipo: "multipla", enunciado: "Se não há saldo em nenhuma conta de resultado, o “Fechar automaticamente”:", opcoes: ["Gera erro grave", "Avisa que não há saldo para encerrar", "Fecha sem nenhum lançamento, sem avisar", "Exclui a empresa"], correta: 1 },
+      { tipo: "vf", enunciado: "Cada conta de resultado com movimento gera seu próprio lançamento de encerramento.", correta: true },
+      { tipo: "multipla", enunciado: "O valor lançado no encerramento de cada conta corresponde:", opcoes: ["Ao saldo daquela conta no período", "A um valor fixo", "À média das contas", "Ao total do Ativo"], correta: 0 },
+      { tipo: "vf", enunciado: "Um lançamento gerado automaticamente pelo Encerramento pode ser editado ou excluído depois, em Lançamentos.", correta: true },
+      { tipo: "multipla", enunciado: "Antes de clicar em “Fechar automaticamente”, o recomendado é conferir:", opcoes: ["O Balancete e a DRE", "Só o Plano de Contas", "Só a Central de Suporte", "Nada"], correta: 0 },
+      { tipo: "vf", enunciado: "Depois do Encerramento, o resultado aparece refletido no Patrimônio Líquido do Balanço.", correta: true },
+      { tipo: "multipla", enunciado: "Se houver um erro em um lançamento anterior não corrigido, o resultado do Encerramento:", opcoes: ["Se corrige sozinho", "Sai errado, refletindo o erro", "É ignorado", "Impede o encerramento"], correta: 1 },
+      { tipo: "vf", enunciado: "Depois de um erro no Encerramento, dá para corrigir o lançamento original e conferir os relatórios de novo.", correta: true },
+      { tipo: "multipla", enunciado: "A relação entre DRE e Encerramento é:", opcoes: ["Nenhuma", "A DRE apresenta o resultado; o Encerramento o operacionaliza contabilmente", "São o mesmo relatório", "O Encerramento substitui a DRE totalmente"], correta: 1 },
+      { tipo: "vf", enunciado: "É possível rodar o Encerramento mais de uma vez, se novos lançamentos de resultado surgirem depois.", correta: true },
+      { tipo: "multipla", enunciado: "Quem pode usar “Fechar automaticamente” na empresa de um aluno?", opcoes: ["Só o Mestre", "O próprio aluno, dono da empresa (e Mestre/Professor)", "Qualquer aluno de qualquer empresa", "Ninguém"], correta: 1 },
+      { tipo: "vf", enunciado: "Depois do Encerramento, as contas de resultado seguem acumulando saldo do período anterior.", correta: false },
+      { tipo: "multipla", enunciado: "Se a empresa teve lucro, a conta de PL (3.9) deve:", opcoes: ["Diminuir", "Aumentar", "Ficar zerada", "Ser excluída"], correta: 1 },
+      { tipo: "vf", enunciado: "O Encerramento é a etapa que liga o resultado calculado na DRE ao Balanço Patrimonial.", correta: true },
+    ],
+  },
 };
 
 function AtividadeAvaliativa({ moduloId, moduloLabel, perfil, empresas, notas, salvarNotas, registrarAuditoria }) {
@@ -7732,6 +8037,12 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
             notas={notas}
             salvarNotas={salvarNotas}
             registrarAuditoria={registrarAuditoria}
+            turmas={turmas}
+            usuarios={usuarios}
+            prazosAtividades={prazosAtividades}
+            salvarPrazosAtividades={salvarPrazosAtividades}
+            liberacoesExcecao={liberacoesExcecao}
+            salvarLiberacoesExcecao={salvarLiberacoesExcecao}
           />
         </>
       )}
@@ -7747,6 +8058,12 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
             notas={notas}
             salvarNotas={salvarNotas}
             registrarAuditoria={registrarAuditoria}
+            turmas={turmas}
+            usuarios={usuarios}
+            prazosAtividades={prazosAtividades}
+            salvarPrazosAtividades={salvarPrazosAtividades}
+            liberacoesExcecao={liberacoesExcecao}
+            salvarLiberacoesExcecao={salvarLiberacoesExcecao}
           />
         </>
       )}
@@ -7762,6 +8079,15 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
             registrarAuditoria={registrarAuditoria}
             leaves={leavesAtivas}
             contaByCode={contaByCodeAtivo}
+            empresas={empresas}
+            notas={notas}
+            salvarNotas={salvarNotas}
+            turmas={turmas}
+            usuarios={usuarios}
+            prazosAtividades={prazosAtividades}
+            salvarPrazosAtividades={salvarPrazosAtividades}
+            liberacoesExcecao={liberacoesExcecao}
+            salvarLiberacoesExcecao={salvarLiberacoesExcecao}
           />
         </>
       )}
