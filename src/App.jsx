@@ -2584,6 +2584,16 @@ function GestaoSaldosView({ empresa, saldos, salvarSaldos, leaves, registrarAudi
               <td className="py-2 pr-3 text-right">{numFmt(totDev)}</td>
               <td className="py-2 pr-3 text-right">{numFmt(totCred)}</td>
             </tr>
+            {!bateOk && (
+              <tr className="text-red font-semibold">
+                <td colSpan={3} className="py-2 pr-3">
+                  Diferença
+                </td>
+                <td colSpan={2} className="py-2 pr-3 text-right">
+                  {numFmt(Math.abs(totDev - totCred))}
+                </td>
+              </tr>
+            )}
           </tfoot>
         </table>
       </Card>
