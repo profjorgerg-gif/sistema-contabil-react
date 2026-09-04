@@ -2675,6 +2675,23 @@ function GestaoSaldosView({ empresa, saldos, salvarSaldos, leaves, registrarAudi
 
 // ---- Lançamentos (Livro Diário — por empresa ativa) ----
 
+// Etapa 1 do módulo: 10 fatos contábeis orientados, apresentados um de cada
+// vez (com o enunciado logo acima da tela de lançamento) até o aluno
+// completar todos — a partir daí, só fica disponível o lançamento livre
+// (Etapa 2), com a mesma tela e lógica de sempre.
+const FATOS_ORIENTADOS = [
+  "A empresa comprou 100 unidades de mercadorias, pagando à vista em dinheiro (Caixa), a R$ 20,00 cada — total de R$ 2.000,00.",
+  "A empresa comprou 50 unidades de mercadorias a prazo do fornecedor, a R$ 25,00 cada — total de R$ 1.250,00, para pagamento futuro.",
+  "A empresa vendeu 40 unidades de mercadorias à vista, recebendo R$ 3.000,00 no Banco X.",
+  "Registre a baixa do custo das mercadorias vendidas (CMV) referente à venda do fato anterior.",
+  "A empresa vendeu 30 unidades de mercadorias a prazo para um cliente, no valor de R$ 2.400,00, para recebimento futuro.",
+  "Registre a baixa do custo das mercadorias vendidas (CMV) referente à venda do fato anterior.",
+  "A empresa pagou ao fornecedor a duplicata referente à compra do fato 2, através do Banco Y.",
+  "A empresa recebeu do cliente a duplicata referente à venda do fato 5, através do Banco X.",
+  "A empresa pagou R$ 800,00 de aluguel do mês, através do Banco Y.",
+  "A empresa pagou R$ 3.500,00 de salários dos funcionários, através do Banco X.",
+];
+
 function GestaoLancamentosView({ empresa, perfil, lancamentos, salvarLancamentos, leaves, contaByCode, registrarAuditoria }) {
   // Aluno sempre pode editar/excluir os lançamentos da PRÓPRIA empresa (é a
   // prática dele) — a permissão "excluirLancamentos" (concedida por um
@@ -2710,6 +2727,17 @@ function GestaoLancamentosView({ empresa, perfil, lancamentos, salvarLancamentos
 
   const lanc = lancamentos || [];
   const totalPeriodo = lanc.reduce((s, l) => s + Number(l.valor), 0);
+
+  // Etapa 1 (Lançamentos Orientados): só se aplica ao próprio aluno, na sua
+  // empresa, enquanto ele não tiver completado os 10 fatos e não estiver
+  // editando um lançamento já existente. Contagem baseada nos lançamentos já
+  // marcados com fatoOrientado — se o aluno excluir um deles, o fato
+  // correspondente volta a ser apresentado (comportamento esperado).
+  const concluidosGuiados = lanc.filter((l) => l.fatoOrientado).length;
+  const emEtapaGuiada = ehDonoDaEmpresa && concluidosGuiados < FATOS_ORIENTADOS.length && !editandoId;
+  const fatoAtualNumero = concluidosGuiados + 1;
+  const fatoAtualTexto = FATOS_ORIENTADOS[concluidosGuiados];
+  const concluiuTodosGuiados = ehDonoDaEmpresa && concluidosGuiados >= FATOS_ORIENTADOS.length;
 
   const filtrados = lanc.filter((l) => {
     if (filtroTipo && l.tipoOperacao !== filtroTipo) return false;
@@ -2808,6 +2836,7 @@ function GestaoLancamentosView({ empresa, perfil, lancamentos, salvarLancamentos
       tipoOperacao: form.tipoOperacao || undefined,
       quantidade: envolveEstoque ? quantidadeNum : undefined,
       valorUnitario: ehEntradaEstoque ? valorUnitarioNum : undefined,
+      fatoOrientado: emEtapaGuiada ? fatoAtualNumero : undefined,
     };
     if (editandoId) {
       await salvarLancamentos(lanc.map((l) => (l.id === editandoId ? { ...l, ...dados } : l)));
@@ -2830,12 +2859,37 @@ function GestaoLancamentosView({ empresa, perfil, lancamentos, salvarLancamentos
   return (
     <div>
       <h2 className="text-lg font-serif font-semibold text-ink mb-1">
-        {editandoId ? "Editar lançamento" : "Novo lançamento"} — {empresa.nome}
+        {editandoId
+          ? "Editar lançamento"
+          : emEtapaGuiada
+          ? `Fato contábil ${fatoAtualNumero} de ${FATOS_ORIENTADOS.length}`
+          : "Novo lançamento"}{" "}
+        — {empresa.nome}
       </h2>
       <p className="text-sm text-inkSoft mb-4">
         Toda operação exige uma conta a débito e uma conta a crédito, sempre no mesmo valor
         (partidas dobradas).
       </p>
+
+      {emEtapaGuiada && (
+        <Card className="mb-4 border-gold/40">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold text-gold uppercase tracking-wide">
+              Fato contábil {String(fatoAtualNumero).padStart(2, "0")}
+            </span>
+            <span className="text-xs text-inkSoft">{fatoAtualNumero} de {FATOS_ORIENTADOS.length}</span>
+          </div>
+          <p className="text-sm text-ink">{fatoAtualTexto}</p>
+        </Card>
+      )}
+
+      {concluiuTodosGuiados && !editandoId && (
+        <div className="flex items-center gap-2 mb-4 text-sm text-green bg-green/10 border border-green/30 rounded-lg px-3 py-2">
+          <ShieldCheck size={16} />
+          Você concluiu os {FATOS_ORIENTADOS.length} fatos contábeis orientados. A partir de agora, use
+          "Adicionar lançamento" para registrar as operações indicadas pelo professor em sala.
+        </div>
+      )}
 
       <Card className="mb-4">
         <form onSubmit={salvar} className="grid sm:grid-cols-2 gap-3">
@@ -3034,6 +3088,11 @@ function GestaoLancamentosView({ empresa, perfil, lancamentos, salvarLancamentos
                   <td className="py-1.5 pr-3 whitespace-nowrap">{fmtDate(l.data)}</td>
                   <td className="py-1.5 pr-3">{l.tipoOperacao ? <Pill tone="gold">{l.tipoOperacao}</Pill> : "—"}</td>
                   <td className="py-1.5 pr-3">
+                    {l.fatoOrientado && (
+                      <span className="inline-block text-[10px] font-semibold text-gold border border-gold/40 rounded px-1 mr-1.5 align-middle">
+                        Fato {l.fatoOrientado}
+                      </span>
+                    )}
                     {l.historico}
                     {l.observacoes && <div className="text-xs text-inkSoft">{l.observacoes}</div>}
                   </td>
