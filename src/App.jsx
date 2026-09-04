@@ -235,6 +235,69 @@ function credMinusDebPrefix(lancamentos, saldos, prefixo) {
   return mov + ini;
 }
 
+// ---- Árvore analítica do Balanço Patrimonial (Grupo → Subgrupo → Conta
+// Sintética → Conta Analítica) — Fase 6 ----
+function codigoPai(codigo) {
+  const partes = codigo.split(".");
+  if (partes.length <= 1) return null;
+  return partes.slice(0, -1).join(".");
+}
+
+// Valor próprio de uma conta (sem contar subcontas), na direção natural do
+// lado do Balanço em que ela está: Ativo → devedor líquido; Passivo/PL →
+// credor líquido. Só é relevante para contas que aceitam lançamento direto.
+function valorProprioConta(lancamentos, saldos, codigo, ladoAtivo) {
+  const deb = totalDebConta(lancamentos, saldos, codigo);
+  const cred = totalCredConta(lancamentos, saldos, codigo);
+  return ladoAtivo ? deb - cred : cred - deb;
+}
+
+// Valor de uma conta somando ela própria (se aceitar lançamento) com todas as
+// contas abaixo dela na hierarquia.
+function valorContaComDescendentes(lancamentos, saldos, conta, ladoAtivo) {
+  const descendentes = ladoAtivo
+    ? debMinusCredPrefix(lancamentos, saldos, conta.codigo)
+    : credMinusDebPrefix(lancamentos, saldos, conta.codigo);
+  const proprio = conta.aceitaLancamento ? valorProprioConta(lancamentos, saldos, conta.codigo, ladoAtivo) : 0;
+  return descendentes + proprio;
+}
+
+// Monta a árvore de um ramo do plano de contas (ex.: "1" = Ativo), calcula o
+// valor de cada nó e poda os ramos sem saldo (valor zero e sem filhos com
+// saldo) — assim o Balanço mostra só o que tem movimento, mas de forma
+// hierárquica (grupo/subgrupo/sintética/analítica).
+function construirArvoreBalanco(contas, codigoRaiz, lancamentos, saldos, ladoAtivo) {
+  const doRamo = (contas || []).filter((c) => c.codigo === codigoRaiz || c.codigo.startsWith(codigoRaiz + "."));
+  const porCodigo = {};
+  doRamo.forEach((c) => { porCodigo[c.codigo] = { conta: c, filhos: [], valor: 0 }; });
+  doRamo.forEach((c) => {
+    if (c.codigo === codigoRaiz) return;
+    const pai = codigoPai(c.codigo);
+    if (pai && porCodigo[pai]) porCodigo[pai].filhos.push(porCodigo[c.codigo]);
+  });
+  Object.values(porCodigo).forEach((n) =>
+    n.filhos.sort((a, b) => a.conta.codigo.localeCompare(b.conta.codigo, undefined, { numeric: true }))
+  );
+  const raiz = porCodigo[codigoRaiz];
+  if (!raiz) return null;
+
+  const calcular = (no) => {
+    no.filhos.forEach(calcular);
+    no.valor = valorContaComDescendentes(lancamentos, saldos, no.conta, ladoAtivo);
+  };
+  calcular(raiz);
+
+  const podar = (no) => {
+    no.filhos = no.filhos.filter((f) => {
+      podar(f);
+      return Math.abs(f.valor) >= 0.005 || f.filhos.length > 0;
+    });
+  };
+  podar(raiz);
+
+  return raiz;
+}
+
 // DRE completa conforme a Lei nº 6.404/76 — mesma cadeia de cálculo do sistema original.
 function computeDRE(lancamentos, saldos) {
   const receitaBruta = credMinusDebPrefix(lancamentos, saldos, "4.1.1");
@@ -3182,6 +3245,35 @@ function LinhaBP({ label, valor, total }) {
   );
 }
 
+// Linha de uma conta na árvore analítica do Balanço — indentação e peso da
+// fonte crescem conforme o nível (Grupo > Subgrupo > Sintética > Analítica).
+function LinhaBPAnalitica({ no }) {
+  const { conta, valor, filhos } = no;
+  const nivel = conta.nivel || 1;
+  const estilo =
+    nivel === 1 ? "font-bold text-ink" :
+    nivel === 2 ? "font-semibold text-ink" :
+    nivel === 3 ? "font-medium text-ink" :
+    "text-inkSoft";
+  return (
+    <>
+      <div
+        className={`flex items-center justify-between gap-3 py-1 text-sm ${estilo}`}
+        style={{ paddingLeft: (nivel - 1) * 14 }}
+      >
+        <span className="flex gap-2 min-w-0">
+          <span className="font-mono text-xs text-inkSoft shrink-0">{conta.codigo}</span>
+          <span className="truncate">{conta.nome}</span>
+        </span>
+        <span className="font-mono shrink-0">{money(valor)}</span>
+      </div>
+      {filhos.map((f) => (
+        <LinhaBPAnalitica key={f.conta.codigo} no={f} />
+      ))}
+    </>
+  );
+}
+
 function SeloFechamento({ ok, rotulo, formula }) {
   return (
     <div
@@ -3508,38 +3600,46 @@ function GestaoEncerramentoView({ empresa, lancamentos, saldos, perfil, salvarLa
 
 // ---- Balanço Patrimonial ----
 
-function GestaoBalancoView({ empresa, lancamentos, saldos }) {
+function GestaoBalancoView({ empresa, lancamentos, saldos, contas }) {
   if (!empresa) return <div className="text-sm text-inkSoft italic">Selecione uma empresa ativa acima.</div>;
 
-  const ativoCirc = debMinusCredPrefix(lancamentos, saldos, "1.1");
-  const ativoNaoCirc = debMinusCredPrefix(lancamentos, saldos, "1.2");
-  const totalAtivo = ativoCirc + ativoNaoCirc;
-  const passivoCirc = credMinusDebPrefix(lancamentos, saldos, "2.1");
-  const passivoNaoCirc = credMinusDebPrefix(lancamentos, saldos, "2.2");
-  const pl = credMinusDebPrefix(lancamentos, saldos, "3");
+  const arvoreAtivo = construirArvoreBalanco(contas, "1", lancamentos, saldos, true);
+  const arvorePassivo = construirArvoreBalanco(contas, "2", lancamentos, saldos, false);
+  const arvorePL = construirArvoreBalanco(contas, "3", lancamentos, saldos, false);
+
+  const totalAtivo = arvoreAtivo ? arvoreAtivo.valor : 0;
+  const totalPassivo = arvorePassivo ? arvorePassivo.valor : 0;
+  const totalPL = arvorePL ? arvorePL.valor : 0;
   const resultadoDRE = computeDRE(lancamentos, saldos).resultadoLiquido;
-  const totalPassivoPL = passivoCirc + passivoNaoCirc + pl + resultadoDRE;
+  const totalPassivoPL = totalPassivo + totalPL + resultadoDRE;
   const ok = Math.abs(totalAtivo - totalPassivoPL) < 0.005;
+
+  const semSaldoPassivoPL =
+    (!arvorePassivo || arvorePassivo.filhos.length === 0) && (!arvorePL || arvorePL.filhos.length === 0);
 
   return (
     <div>
       <SeloFechamento ok={ok} rotulo="Balanço" formula="A = P+PL" />
       <h2 className="text-lg font-serif font-semibold text-ink mb-1">Balanço Patrimonial — {empresa.nome}</h2>
       <p className="text-sm text-inkSoft mb-4">
-        Consolidado a partir dos saldos iniciais e dos lançamentos do período desta empresa.
+        Detalhamento analítico — grupo, subgrupo, conta sintética e conta analítica — a partir dos
+        saldos iniciais e dos lançamentos do período desta empresa. Só aparecem contas com saldo.
       </p>
       <div className="grid sm:grid-cols-2 gap-4">
         <Card>
           <h3 className="font-serif font-semibold text-ink mb-2">ATIVO</h3>
-          <LinhaBP label="Ativo Circulante" valor={ativoCirc} />
-          <LinhaBP label="Ativo Não Circulante" valor={ativoNaoCirc} />
+          {arvoreAtivo && arvoreAtivo.filhos.length > 0 ? (
+            arvoreAtivo.filhos.map((f) => <LinhaBPAnalitica key={f.conta.codigo} no={f} />)
+          ) : (
+            <div className="text-sm text-inkSoft italic py-1">Nenhum saldo lançado.</div>
+          )}
           <LinhaBP label="TOTAL DO ATIVO" valor={totalAtivo} total />
         </Card>
         <Card>
           <h3 className="font-serif font-semibold text-ink mb-2">PASSIVO + PATRIMÔNIO LÍQUIDO</h3>
-          <LinhaBP label="Passivo Circulante" valor={passivoCirc} />
-          <LinhaBP label="Passivo Não Circulante" valor={passivoNaoCirc} />
-          <LinhaBP label="Patrimônio Líquido" valor={pl} />
+          {arvorePassivo && arvorePassivo.filhos.map((f) => <LinhaBPAnalitica key={f.conta.codigo} no={f} />)}
+          {arvorePL && arvorePL.filhos.map((f) => <LinhaBPAnalitica key={f.conta.codigo} no={f} />)}
+          {semSaldoPassivoPL && <div className="text-sm text-inkSoft italic py-1">Nenhum saldo lançado.</div>}
           <LinhaBP label="Resultado Líquido do Exercício (DRE)" valor={resultadoDRE} />
           <LinhaBP label="TOTAL DO PASSIVO + PL" valor={totalPassivoPL} total />
         </Card>
@@ -6813,7 +6913,7 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
       {aba === "balanco" && (
         <>
           <SeletorEmpresaAtiva empresas={empresasVisiveis} empresaAtivaId={empresaAtivaId} setEmpresaAtivaId={setEmpresaAtivaId} />
-          <GestaoBalancoView empresa={empresaAtiva} lancamentos={lancamentos} saldos={saldos} />
+          <GestaoBalancoView empresa={empresaAtiva} lancamentos={lancamentos} saldos={saldos} contas={contasAtivas} />
         </>
       )}
       {aba === "relatorios" && (
