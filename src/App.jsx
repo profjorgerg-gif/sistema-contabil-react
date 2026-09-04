@@ -2718,15 +2718,13 @@ function GestaoLancamentosView({ empresa, perfil, lancamentos, salvarLancamentos
   const [erro, setErro] = useState("");
   const [filtroTexto, setFiltroTexto] = useState("");
   const [filtroTipo, setFiltroTipo] = useState("");
-
-  if (!empresa) {
-    return (
-      <div className="text-sm text-inkSoft italic">Selecione uma empresa ativa acima para lançar.</div>
-    );
-  }
+  // Cursor de navegação do enunciado orientado — permite reler fatos já
+  // lançados (seta ◀) sem afetar qual fato será de fato marcado ao salvar
+  // (isso é sempre o próximo pendente, calculado abaixo). A seta ▶ nunca
+  // ultrapassa o próximo pendente, então não dá pra "pular" um fato.
+  const [cursorFato, setCursorFato] = useState(1);
 
   const lanc = lancamentos || [];
-  const totalPeriodo = lanc.reduce((s, l) => s + Number(l.valor), 0);
 
   // Etapa 1 (Lançamentos Orientados): só se aplica ao próprio aluno, na sua
   // empresa, enquanto ele não tiver completado os 10 fatos e não estiver
@@ -2735,9 +2733,27 @@ function GestaoLancamentosView({ empresa, perfil, lancamentos, salvarLancamentos
   // correspondente volta a ser apresentado (comportamento esperado).
   const concluidosGuiados = lanc.filter((l) => l.fatoOrientado).length;
   const emEtapaGuiada = ehDonoDaEmpresa && concluidosGuiados < FATOS_ORIENTADOS.length && !editandoId;
-  const fatoAtualNumero = concluidosGuiados + 1;
-  const fatoAtualTexto = FATOS_ORIENTADOS[concluidosGuiados];
+  const fatoPendenteNumero = Math.min(concluidosGuiados + 1, FATOS_ORIENTADOS.length);
   const concluiuTodosGuiados = ehDonoDaEmpresa && concluidosGuiados >= FATOS_ORIENTADOS.length;
+
+  // Mantém o cursor de navegação sincronizado com o próximo fato pendente
+  // sempre que o progresso mudar (novo lançamento salvo ou um antigo
+  // excluído) — sem isso, o aluno teria que clicar em ▶ manualmente toda vez.
+  useEffect(() => {
+    setCursorFato(fatoPendenteNumero);
+  }, [fatoPendenteNumero]);
+
+  const fatoExibidoNumero = Math.min(Math.max(cursorFato, 1), fatoPendenteNumero);
+  const fatoExibidoTexto = FATOS_ORIENTADOS[fatoExibidoNumero - 1];
+  const fatoExibidoJaLancado = fatoExibidoNumero <= concluidosGuiados;
+
+  if (!empresa) {
+    return (
+      <div className="text-sm text-inkSoft italic">Selecione uma empresa ativa acima para lançar.</div>
+    );
+  }
+
+  const totalPeriodo = lanc.reduce((s, l) => s + Number(l.valor), 0);
 
   const filtrados = lanc.filter((l) => {
     if (filtroTipo && l.tipoOperacao !== filtroTipo) return false;
@@ -2836,9 +2852,11 @@ function GestaoLancamentosView({ empresa, perfil, lancamentos, salvarLancamentos
       tipoOperacao: form.tipoOperacao || undefined,
       quantidade: envolveEstoque ? quantidadeNum : undefined,
       valorUnitario: ehEntradaEstoque ? valorUnitarioNum : undefined,
-      fatoOrientado: emEtapaGuiada ? fatoAtualNumero : undefined,
     };
     if (editandoId) {
+      // Não mexe em fatoOrientado — a edição corrige os dados do lançamento,
+      // nunca a marcação de qual fato guiado ele pertence (ver comentário
+      // acima sobre o bug de progresso "voltando" ao ser editado).
       await salvarLancamentos(lanc.map((l) => (l.id === editandoId ? { ...l, ...dados } : l)));
       await registrarAuditoria(
         "editar",
@@ -2846,7 +2864,16 @@ function GestaoLancamentosView({ empresa, perfil, lancamentos, salvarLancamentos
         `Editou lançamento na empresa "${empresa.nome}": "${dados.historico}" — ${money(dados.valor)} (Déb: ${dados.contaDebito} / Créd: ${dados.contaCredito})`
       );
     } else {
-      await salvarLancamentos([...lanc, { id: uid("l"), usuarioId: perfil?.uid, ...dados }]);
+      // Novo lançamento: se estiver na etapa guiada, marca sempre com o
+      // próximo fato pendente — nunca com o que estiver sendo exibido pelas
+      // setas de navegação (essas só servem para reler enunciados).
+      const novo = {
+        id: uid("l"),
+        usuarioId: perfil?.uid,
+        ...dados,
+        fatoOrientado: emEtapaGuiada ? fatoPendenteNumero : undefined,
+      };
+      await salvarLancamentos([...lanc, novo]);
       await registrarAuditoria(
         "criar",
         "lancamento",
@@ -2862,7 +2889,7 @@ function GestaoLancamentosView({ empresa, perfil, lancamentos, salvarLancamentos
         {editandoId
           ? "Editar lançamento"
           : emEtapaGuiada
-          ? `Fato contábil ${fatoAtualNumero} de ${FATOS_ORIENTADOS.length}`
+          ? `Fato contábil ${fatoPendenteNumero} de ${FATOS_ORIENTADOS.length} pendente`
           : "Novo lançamento"}{" "}
         — {empresa.nome}
       </h2>
@@ -2874,12 +2901,45 @@ function GestaoLancamentosView({ empresa, perfil, lancamentos, salvarLancamentos
       {emEtapaGuiada && (
         <Card className="mb-4 border-gold/40">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-gold uppercase tracking-wide">
-              Fato contábil {String(fatoAtualNumero).padStart(2, "0")}
-            </span>
-            <span className="text-xs text-inkSoft">{fatoAtualNumero} de {FATOS_ORIENTADOS.length}</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-gold uppercase tracking-wide">
+                Fato contábil {String(fatoExibidoNumero).padStart(2, "0")}
+              </span>
+              {fatoExibidoJaLancado ? (
+                <Pill tone="green">Já lançado</Pill>
+              ) : (
+                <Pill tone="gold">Pendente — responda aqui embaixo</Pill>
+              )}
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setCursorFato((n) => Math.max(1, n - 1))}
+                disabled={fatoExibidoNumero <= 1}
+                className="p-1 rounded border border-line text-inkSoft hover:text-ink hover:border-ink disabled:opacity-30 disabled:hover:text-inkSoft disabled:hover:border-line"
+                title="Fato anterior"
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <span className="text-xs text-inkSoft w-12 text-center">{fatoExibidoNumero} de {FATOS_ORIENTADOS.length}</span>
+              <button
+                type="button"
+                onClick={() => setCursorFato((n) => Math.min(fatoPendenteNumero, n + 1))}
+                disabled={fatoExibidoNumero >= fatoPendenteNumero}
+                className="p-1 rounded border border-line text-inkSoft hover:text-ink hover:border-ink disabled:opacity-30 disabled:hover:text-inkSoft disabled:hover:border-line"
+                title="Próximo fato"
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
           </div>
-          <p className="text-sm text-ink">{fatoAtualTexto}</p>
+          <p className="text-sm text-ink">{fatoExibidoTexto}</p>
+          {fatoExibidoJaLancado && (
+            <p className="text-xs text-inkSoft mt-2 italic">
+              Você está revendo este fato. O formulário abaixo continua registrando o Fato{" "}
+              {fatoPendenteNumero} (o próximo pendente).
+            </p>
+          )}
         </Card>
       )}
 
