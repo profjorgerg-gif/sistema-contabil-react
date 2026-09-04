@@ -2461,13 +2461,18 @@ function GestaoSaldosView({ empresa, saldos, salvarSaldos, leaves, registrarAudi
     return <div className="text-sm text-inkSoft italic">Selecione uma empresa ativa acima para ver os saldos.</div>;
   }
 
-  // Por padrão, só as contas patrimoniais (Ativo, Passivo, Patrimônio Líquido
-  // — grupos 1, 2 e 3) aparecem aqui, porque são as únicas que costumam
-  // precisar de saldo já na abertura da empresa. Contas de Receita, Custo e
-  // Despesa (grupos 4, 5 e 6) nascem zeradas e são movimentadas normalmente
-  // pelos Lançamentos, conforme os fatos contábeis do período.
-  const leavesPatrimoniais = leaves.filter((c) => ["1", "2", "3"].includes(c.codigo.split(".")[0]));
-  const baseVisivel = mostrarTodas ? leaves : leavesPatrimoniais;
+  // Por padrão, só as contas do "lançamento de abertura" aparecem aqui:
+  // Capital Subscrito (Patrimônio Líquido) e suas contrapartidas mais comuns
+  // no Ativo — Disponível (Caixa/Bancos) e Imobilizado. As demais contas
+  // patrimoniais (Passivo, outras do Ativo etc.) e as de Receita/Custo/Despesa
+  // nascem zeradas e são movimentadas normalmente pelos Lançamentos.
+  const CODIGOS_ABERTURA = [
+    "3.1.01", // Capital Subscrito
+    "1.1.1.01", "1.1.1.02.01", "1.1.1.02.02", // Caixa Geral, Banco X, Banco Y
+    "1.2.3.01", "1.2.3.02", "1.2.3.03", "1.2.3.05", "1.2.3.07", "1.2.3.08", "1.2.3.09", // Imobilizado
+  ];
+  const leavesAbertura = leaves.filter((c) => CODIGOS_ABERTURA.includes(c.codigo));
+  const baseVisivel = mostrarTodas ? leaves : leavesAbertura;
 
   const linhas = baseVisivel.filter((c) => {
     if (!filtro) return true;
@@ -2496,15 +2501,16 @@ function GestaoSaldosView({ empresa, saldos, salvarSaldos, leaves, registrarAudi
     <div>
       <h2 className="text-lg font-serif font-semibold text-ink mb-1">Saldos Iniciais — {empresa.nome}</h2>
       <p className="text-sm text-inkSoft mb-1">
-        Preencha o saldo devedor OU credor de cada conta no início do período (deixe em branco as
-        que não tiverem saldo).
+        Registre aqui o <b>lançamento de abertura</b> da empresa: credite o Capital Subscrito pelo
+        total investido pelos sócios, e distribua o mesmo valor em débito entre uma ou mais contas
+        de Ativo (Caixa, Bancos ou Imobilizado) — o total devedor precisa bater com o total credor.
       </p>
       <p className="text-xs text-inkSoft mb-4">
         {mostrarTodas
           ? "Mostrando todas as contas do plano."
-          : "Mostrando só as contas patrimoniais (Ativo, Passivo e Patrimônio Líquido) — as de Receita, Custo e Despesa nascem zeradas e são movimentadas normalmente pelos Lançamentos."}{" "}
+          : "Mostrando só as contas do lançamento de abertura — Capital Subscrito e suas contrapartidas mais comuns no Ativo (Caixa, Bancos, Imobilizado). As demais contas patrimoniais e as de Receita, Custo e Despesa são movimentadas normalmente pelos Lançamentos."}{" "}
         <button onClick={() => setMostrarTodas((v) => !v)} className="text-green underline decoration-dotted hover:opacity-70">
-          {mostrarTodas ? "Mostrar só patrimoniais" : "Mostrar todas as contas"}
+          {mostrarTodas ? "Mostrar só as contas de abertura" : "Mostrar todas as contas"}
         </button>
       </p>
 
@@ -4396,21 +4402,24 @@ function ManualCicloContabil() {
 
       <SubSecaoTitulo numero="2.">Saldos Iniciais</SubSecaoTitulo>
       <p className="text-sm text-inkSoft mb-3">
-        Registre o saldo com que cada conta entra no período — devedor ou credor. Deixe em branco
-        as contas sem saldo inicial.
+        É o lançamento de abertura da sua empresa: credite <b>Capital Subscrito</b> pelo total
+        investido pelos sócios, e distribua o mesmo valor em débito entre uma ou mais contas de
+        Ativo — Caixa, Bancos ou Imobilizado (móveis, veículos, máquinas etc.).
       </p>
       <TabelaIlustrada
-        legenda="Preencha só um dos dois lados por conta"
+        legenda="Exemplo: sócios integralizam R$ 20.000, parte em dinheiro e parte em equipamento"
         colunas={["Código", "Conta", "Natureza", "Saldo Devedor", "Saldo Credor"]}
         badgeColuna={3}
         linhas={[
-          ["1.1.1.01", "Caixa Geral", "Devedora", "1.500,00", ""],
-          ["2.1.1.01", "Fornecedores", "Credora", "", "3.000,00"],
+          ["1.1.1.01", "Caixa Geral", "Devedora", "15.000,00", ""],
+          ["1.2.3.05", "Máquinas e Equipamentos", "Devedora", "5.000,00", ""],
+          ["3.1.01", "Capital Subscrito", "Credora", "", "20.000,00"],
         ]}
       />
       <p className="text-xs text-inkSoft mb-2">
-        O sistema mostra "OK" quando a soma de todos os saldos devedores bate com a soma de todos
-        os credores.
+        A tela mostra só essas contas de abertura por padrão (link "Mostrar todas as contas" pra
+        casos excepcionais). O sistema confirma "OK" quando a soma dos saldos devedores bate com a
+        soma dos credores.
       </p>
 
       <SubSecaoTitulo numero="3.">Lançamentos</SubSecaoTitulo>
