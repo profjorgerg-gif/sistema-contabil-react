@@ -2158,7 +2158,22 @@ function sugerirProximoCodigo(contas, grupo, tipo) {
   return `${grupoDigitoBase(grupo)}.1`;
 }
 
-function GestaoPlanoContasView({ perfil, contas, salvarPlanoContas, auditoria, registrarAuditoria, empresas, notas, salvarNotas }) {
+function GestaoPlanoContasView({
+  perfil,
+  contas,
+  salvarPlanoContas,
+  auditoria,
+  registrarAuditoria,
+  empresas,
+  notas,
+  salvarNotas,
+  turmas,
+  usuarios,
+  prazosAtividades,
+  salvarPrazosAtividades,
+  liberacoesExcecao,
+  salvarLiberacoesExcecao,
+}) {
   const podeEditar = perfil?.tipo === "Mestre";
   const [filtro, setFiltro] = useState("");
   const [mostrarForm, setMostrarForm] = useState(false);
@@ -2504,6 +2519,12 @@ function GestaoPlanoContasView({ perfil, contas, salvarPlanoContas, auditoria, r
         notas={notas}
         salvarNotas={salvarNotas}
         registrarAuditoria={registrarAuditoria}
+        turmas={turmas}
+        usuarios={usuarios}
+        prazosAtividades={prazosAtividades}
+        salvarPrazosAtividades={salvarPrazosAtividades}
+        liberacoesExcecao={liberacoesExcecao}
+        salvarLiberacoesExcecao={salvarLiberacoesExcecao}
       />
     </div>
   );
@@ -6292,7 +6313,21 @@ function AtividadeAvaliativa({ moduloId, moduloLabel, perfil, empresas, notas, s
 // + Termo de Desistência) — piloto em Plano de Contas (Fase 6). ----
 const NOTA_MINIMA_SATISFATORIA = 6;
 
-function AtividadeAvaliativaV2({ moduloId, moduloLabel, perfil, empresas, notas, salvarNotas, registrarAuditoria }) {
+function AtividadeAvaliativaV2({
+  moduloId,
+  moduloLabel,
+  perfil,
+  empresas,
+  notas,
+  salvarNotas,
+  registrarAuditoria,
+  turmas,
+  usuarios,
+  prazosAtividades,
+  salvarPrazosAtividades,
+  liberacoesExcecao,
+  salvarLiberacoesExcecao,
+}) {
   const banco = AVALIACOES_V2[moduloId];
   const [aberto, setAberto] = useState(false);
   const [exercicioAtivo, setExercicioAtivo] = useState(null); // 0, 1, 2, "recuperacao" ou null
@@ -6300,6 +6335,12 @@ function AtividadeAvaliativaV2({ moduloId, moduloLabel, perfil, empresas, notas,
   const [confirmandoDesistencia, setConfirmandoDesistencia] = useState(false);
   const [aceiteTermo, setAceiteTermo] = useState(false);
   const [resultadoTeste, setResultadoTeste] = useState(null); // só para quem não é Aluno
+  // Painel do professor: turma sendo configurada, formulário de prazo, e
+  // liberação excepcional em edição (aluno + nova data/hora limite).
+  const [turmaConfigId, setTurmaConfigId] = useState((turmas || [])[0]?.id || "");
+  const [formPrazo, setFormPrazo] = useState({ inicio: "", fim: "" });
+  const [liberandoAlunoUid, setLiberandoAlunoUid] = useState(null);
+  const [novoPrazoLiberacao, setNovoPrazoLiberacao] = useState("");
 
   const souAluno = perfil?.tipo === "Aluno";
 
@@ -6314,8 +6355,31 @@ function AtividadeAvaliativaV2({ moduloId, moduloLabel, perfil, empresas, notas,
     ? Math.round((notasExercicios.reduce((s, n) => s + n, 0) / 3) * 10) / 10
     : null;
   const mediaSatisfatoria = mediaExercicios !== null && mediaExercicios >= NOTA_MINIMA_SATISFATORIA;
-  const precisaDeDecisao = todosExerciciosFeitos && !mediaSatisfatoria && !registro?.desistiu && registro?.notaRecuperacao == null;
+  const precisaDeDecisao = todosExerciciosFeitos && !registro?.desistiu && registro?.notaRecuperacao == null;
   const notaFinal = registro?.nota ?? mediaExercicios;
+  const moduloTotalmenteConcluido = todosExerciciosFeitos && (registro?.desistiu || registro?.notaRecuperacao != null);
+
+  // ---- Prazo (por turma) e liberação excepcional (por aluno) ----
+  const prazoTurmaDoAluno = souAluno
+    ? (prazosAtividades || []).find((p) => p.turmaId === perfil?.turmaId && p.moduloId === moduloId)
+    : null;
+  const liberacoesDoAluno = souAluno
+    ? (liberacoesExcecao || []).filter((l) => l.alunoId === perfil?.uid && l.moduloId === moduloId)
+    : [];
+  const ultimaLiberacaoDoAluno = liberacoesDoAluno.sort((a, b) => b.concedidoEm - a.concedidoEm)[0] || null;
+  const agora = Date.now();
+  const inicioMs = prazoTurmaDoAluno?.inicio ? new Date(prazoTurmaDoAluno.inicio).getTime() : null;
+  const fimEfetivoMs = ultimaLiberacaoDoAluno
+    ? new Date(ultimaLiberacaoDoAluno.novoPrazoFim).getTime()
+    : prazoTurmaDoAluno?.fim
+    ? new Date(prazoTurmaDoAluno.fim).getTime()
+    : null;
+  const aindaNaoComecou = inicioMs !== null && agora < inicioMs;
+  const prazoEncerrado = fimEfetivoMs !== null && agora > fimEfetivoMs;
+  // Só bloqueia quem ainda não terminou tudo — quem já concluiu (com decisão
+  // de RP/desistência tomada) sempre pode ver o próprio resultado.
+  const bloqueadoPorPrazo =
+    souAluno && !moduloTotalmenteConcluido && !registro?.overrideProfessor && (aindaNaoComecou || prazoEncerrado);
 
   const perguntasAtivas =
     exercicioAtivo === "recuperacao" ? banco.recuperacao : exercicioAtivo !== null ? banco.exercicios[exercicioAtivo] : [];
@@ -6392,6 +6456,59 @@ function AtividadeAvaliativaV2({ moduloId, moduloLabel, perfil, empresas, notas,
     await salvar(novoRegistro, `${perfil.nome} assinou o Termo de Desistência da Recuperação Paralela de "${moduloLabel}"`);
     setConfirmandoDesistencia(false);
     setAceiteTermo(false);
+  };
+
+  // ---- Painel do professor: prazo por turma + liberação excepcional ----
+  const prazoDaTurmaConfig = (prazosAtividades || []).find(
+    (p) => p.turmaId === turmaConfigId && p.moduloId === moduloId
+  );
+
+  const salvarPrazoTurma = async () => {
+    if (!formPrazo.inicio || !formPrazo.fim) return;
+    const outros = (prazosAtividades || []).filter((p) => !(p.turmaId === turmaConfigId && p.moduloId === moduloId));
+    const novoPrazo = {
+      id: prazoDaTurmaConfig?.id || uid("prazo"),
+      turmaId: turmaConfigId,
+      moduloId,
+      moduloLabel,
+      inicio: formPrazo.inicio,
+      fim: formPrazo.fim,
+      definidoPor: perfil.nome,
+      definidoEm: Date.now(),
+    };
+    await salvarPrazosAtividades([...outros, novoPrazo]);
+    if (registrarAuditoria) {
+      const turmaNome = (turmas || []).find((t) => t.id === turmaConfigId)?.nome || turmaConfigId;
+      await registrarAuditoria(
+        "editar",
+        "sistema",
+        `${perfil.nome} definiu o prazo de "${moduloLabel}" para a turma "${turmaNome}": ${fmtDateTime(new Date(formPrazo.inicio).getTime())} até ${fmtDateTime(new Date(formPrazo.fim).getTime())}`
+      );
+    }
+  };
+
+  const concederLiberacao = async (aluno) => {
+    if (!novoPrazoLiberacao) return;
+    const nova = {
+      id: uid("liberacao"),
+      alunoId: aluno.uid,
+      alunoNome: aluno.nome,
+      moduloId,
+      moduloLabel,
+      professorNome: perfil.nome,
+      concedidoEm: Date.now(),
+      novoPrazoFim: novoPrazoLiberacao,
+    };
+    await salvarLiberacoesExcecao([...(liberacoesExcecao || []), nova]);
+    if (registrarAuditoria) {
+      await registrarAuditoria(
+        "editar",
+        "sistema",
+        `${perfil.nome} liberou excepcionalmente "${moduloLabel}" para ${aluno.nome} até ${fmtDateTime(new Date(novoPrazoLiberacao).getTime())}`
+      );
+    }
+    setLiberandoAlunoUid(null);
+    setNovoPrazoLiberacao("");
   };
 
   const corrigir = async () => {
@@ -6481,7 +6598,7 @@ function AtividadeAvaliativaV2({ moduloId, moduloLabel, perfil, empresas, notas,
     resumo = "Clique para conferir os exercícios (não grava nota).";
   } else if (registro?.overrideProfessor) {
     resumo = `Nota definida pelo professor(a): ${numFmt(registro.nota)}`;
-  } else if (notaFinal !== null && (mediaSatisfatoria || registro?.desistiu || registro?.notaRecuperacao != null)) {
+  } else if (notaFinal !== null && (registro?.desistiu || registro?.notaRecuperacao != null)) {
     resumo = `Concluído — nota final ${numFmt(notaFinal)}`;
   } else if (precisaDeDecisao) {
     resumo = `Média dos 3 exercícios: ${numFmt(mediaExercicios)} — Recuperação Paralela disponível`;
@@ -6504,9 +6621,122 @@ function AtividadeAvaliativaV2({ moduloId, moduloLabel, perfil, empresas, notas,
 
       {aberto && (
         <div className="mt-3">
-          {/* --- Quem não é Aluno: testa livremente, nunca grava nota. --- */}
+          {/* --- Quem não é Aluno: configura prazo da turma, libera exceções, e testa livremente (nunca grava nota). --- */}
           {!souAluno && (
             <>
+              {(turmas || []).length > 0 && (
+                <Card className="mb-3">
+                  <p className="text-xs font-semibold text-ink uppercase tracking-wide mb-2">Prazo da atividade — por turma</p>
+                  <div className="flex flex-wrap items-end gap-2 mb-2">
+                    <Field label="Turma">
+                      <SelectInput
+                        value={turmaConfigId}
+                        onChange={(e) => {
+                          setTurmaConfigId(e.target.value);
+                          const p = (prazosAtividades || []).find((pr) => pr.turmaId === e.target.value && pr.moduloId === moduloId);
+                          setFormPrazo({ inicio: p?.inicio || "", fim: p?.fim || "" });
+                        }}
+                      >
+                        {(turmas || []).map((t) => (
+                          <option key={t.id} value={t.id}>{t.nome}</option>
+                        ))}
+                      </SelectInput>
+                    </Field>
+                    <Field label="Início">
+                      <TxtInput
+                        type="datetime-local"
+                        value={formPrazo.inicio}
+                        onChange={(e) => setFormPrazo({ ...formPrazo, inicio: e.target.value })}
+                      />
+                    </Field>
+                    <Field label="Encerramento">
+                      <TxtInput
+                        type="datetime-local"
+                        value={formPrazo.fim}
+                        onChange={(e) => setFormPrazo({ ...formPrazo, fim: e.target.value })}
+                      />
+                    </Field>
+                    <Botao onClick={salvarPrazoTurma}>Salvar prazo da turma</Botao>
+                  </div>
+                  {prazoDaTurmaConfig && (
+                    <p className="text-xs text-inkSoft">
+                      Prazo atual: {fmtDateTime(new Date(prazoDaTurmaConfig.inicio).getTime())} até{" "}
+                      {fmtDateTime(new Date(prazoDaTurmaConfig.fim).getTime())} — definido por {prazoDaTurmaConfig.definidoPor}.
+                    </p>
+                  )}
+
+                  {(usuarios || []).filter((u) => u.tipo === "Aluno" && u.turmaId === turmaConfigId).length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-line">
+                      <p className="text-xs font-semibold text-ink uppercase tracking-wide mb-2">Situação dos alunos</p>
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="text-left text-inkSoft border-b border-line">
+                            <th className="py-1 pr-2">Aluno</th>
+                            <th className="py-1 pr-2">Situação</th>
+                            <th className="py-1 text-right">Ação</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(usuarios || [])
+                            .filter((u) => u.tipo === "Aluno" && u.turmaId === turmaConfigId)
+                            .map((aluno) => {
+                              const registroAluno = (notas || []).find((n) => n.alunoId === aluno.uid && n.moduloId === moduloId);
+                              const feitos = (registroAluno?.notasExercicios || [null, null, null]).filter((n) => n !== null).length;
+                              const concluidoAluno =
+                                feitos === 3 && (registroAluno?.desistiu || registroAluno?.notaRecuperacao != null || registroAluno?.overrideProfessor);
+                              const liberacoesAluno = (liberacoesExcecao || []).filter(
+                                (l) => l.alunoId === aluno.uid && l.moduloId === moduloId
+                              );
+                              const ultimaLib = liberacoesAluno.sort((a, b) => b.concedidoEm - a.concedidoEm)[0];
+                              const fimEfetivo = ultimaLib
+                                ? new Date(ultimaLib.novoPrazoFim).getTime()
+                                : prazoDaTurmaConfig?.fim
+                                ? new Date(prazoDaTurmaConfig.fim).getTime()
+                                : null;
+                              const encerradoAluno = !concluidoAluno && fimEfetivo !== null && Date.now() > fimEfetivo;
+                              return (
+                                <tr key={aluno.uid} className="border-b border-line/50">
+                                  <td className="py-1 pr-2">{aluno.nome}</td>
+                                  <td className="py-1 pr-2">
+                                    {concluidoAluno ? (
+                                      <Pill tone="green">Concluído</Pill>
+                                    ) : encerradoAluno ? (
+                                      <Pill tone="default">Prazo encerrado</Pill>
+                                    ) : (
+                                      <Pill tone="gold">{feitos} de 3 exercícios</Pill>
+                                    )}
+                                  </td>
+                                  <td className="py-1 text-right">
+                                    {encerradoAluno &&
+                                      (liberandoAlunoUid === aluno.uid ? (
+                                        <div className="flex items-center gap-1 justify-end">
+                                          <input
+                                            type="datetime-local"
+                                            className="border border-line rounded px-1 py-0.5 text-xs"
+                                            value={novoPrazoLiberacao}
+                                            onChange={(e) => setNovoPrazoLiberacao(e.target.value)}
+                                          />
+                                          <Botao onClick={() => concederLiberacao(aluno)} disabled={!novoPrazoLiberacao}>
+                                            Confirmar
+                                          </Botao>
+                                          <Botao variant="ghost" onClick={() => setLiberandoAlunoUid(null)}>✕</Botao>
+                                        </div>
+                                      ) : (
+                                        <Botao variant="ghost" onClick={() => setLiberandoAlunoUid(aluno.uid)}>
+                                          Liberar para este aluno
+                                        </Botao>
+                                      ))}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </Card>
+              )}
+
               {exercicioAtivo === null ? (
                 <div className="flex gap-2 flex-wrap">
                   {banco.exercicios.map((_, i) => (
@@ -6549,11 +6779,31 @@ function AtividadeAvaliativaV2({ moduloId, moduloLabel, perfil, empresas, notas,
             </Card>
           )}
 
+          {/* --- Aluno: prazo ainda não começou ou já encerrado — bloqueado. --- */}
+          {souAluno && !registro?.overrideProfessor && bloqueadoPorPrazo && (
+            <Card>
+              <div className="flex items-center gap-2 text-sm text-ink">
+                <ShieldCheck size={16} className="text-inkSoft" />
+                {aindaNaoComecou ? (
+                  <span>
+                    Atividade ainda não liberada. Disponível a partir de{" "}
+                    <b>{fmtDateTime(inicioMs)}</b>.
+                  </span>
+                ) : (
+                  <span>
+                    Prazo encerrado. Esta atividade encontra-se bloqueada. Caso seja necessária uma nova liberação,
+                    procure o professor.
+                  </span>
+                )}
+              </div>
+            </Card>
+          )}
+
           {/* --- Aluno: respondendo um exercício ou a recuperação agora. --- */}
-          {souAluno && !registro?.overrideProfessor && exercicioAtivo !== null && <Formulario />}
+          {souAluno && !registro?.overrideProfessor && !bloqueadoPorPrazo && exercicioAtivo !== null && <Formulario />}
 
           {/* --- Aluno: visão normal (cards dos 3 exercícios + decisão/nota final). --- */}
-          {souAluno && !registro?.overrideProfessor && exercicioAtivo === null && (
+          {souAluno && !registro?.overrideProfessor && !bloqueadoPorPrazo && exercicioAtivo === null && (
             <>
               <div className="grid sm:grid-cols-3 gap-3 mb-3">
                 {banco.exercicios.map((perguntas, i) => {
@@ -6603,9 +6853,15 @@ function AtividadeAvaliativaV2({ moduloId, moduloLabel, perfil, empresas, notas,
                 <Card className="border-gold/40">
                   <p className="text-sm font-semibold text-ink mb-1.5">Termo de Desistência da Recuperação Paralela</p>
                   <p className="text-xs text-inkSoft mb-3">
-                    Ao confirmar, você declara que optou por não realizar a Recuperação Paralela de "{moduloLabel}" e
-                    que sua nota final neste módulo será a média dos 3 exercícios ({numFmt(mediaExercicios)}), sem
-                    possibilidade de nova tentativa depois.
+                    Declaro, de forma consciente e voluntária, que estou ciente do meu direito de realizar esta
+                    avaliação, porém opto por não fazê-la neste momento. Assumo total responsabilidade por essa
+                    decisão, ciente de que não terei outra oportunidade para sua realização e de que a nota
+                    correspondente será atribuída como zero, conforme as orientações institucionais.
+                  </p>
+                  <p className="text-xs text-inkSoft mb-3 italic">
+                    Na prática: como você optou por não fazer a Recuperação Paralela, a nota dela fica zerada/não
+                    realizada — mas isso não entra na sua média. Sua nota final neste módulo continua sendo a
+                    média dos 3 exercícios ({numFmt(mediaExercicios)}).
                   </p>
                   <label className="flex items-center gap-2 text-xs text-ink mb-3">
                     <input type="checkbox" checked={aceiteTermo} onChange={(e) => setAceiteTermo(e.target.checked)} />
@@ -6620,7 +6876,7 @@ function AtividadeAvaliativaV2({ moduloId, moduloLabel, perfil, empresas, notas,
                 </Card>
               )}
 
-              {todosExerciciosFeitos && (mediaSatisfatoria || registro?.desistiu || registro?.notaRecuperacao != null) && (
+              {todosExerciciosFeitos && (registro?.desistiu || registro?.notaRecuperacao != null) && (
                 <Card>
                   <div className="text-sm text-ink space-y-1">
                     <div>Média dos 3 exercícios: <b>{numFmt(mediaExercicios)}</b></div>
@@ -7322,6 +7578,10 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
   const [auditoria, salvarAuditoria] = useSharedList("auditoria", []);
   const [chamados, salvarChamados] = useSharedList("chamados", []);
   const [notas, salvarNotas] = useSharedList("notas", []);
+  // Prazos das Atividades Avaliativas (por turma + módulo) e liberações
+  // excepcionais individuais concedidas pelo professor — Fase 6.
+  const [prazosAtividades, salvarPrazosAtividades] = useSharedList("prazos_atividades", []);
+  const [liberacoesExcecao, salvarLiberacoesExcecao] = useSharedList("liberacoes_excecao", []);
   const registrarAuditoria = useCallback(
     async (acao, entidade, descricao) => {
       const entrada = {
@@ -7412,6 +7672,12 @@ function Dashboard({ user, perfil, recarregarPerfil }) {
           empresas={empresas}
           notas={notas}
           salvarNotas={salvarNotas}
+          turmas={turmas}
+          usuarios={usuarios}
+          prazosAtividades={prazosAtividades}
+          salvarPrazosAtividades={salvarPrazosAtividades}
+          liberacoesExcecao={liberacoesExcecao}
+          salvarLiberacoesExcecao={salvarLiberacoesExcecao}
         />
       )}
       {aba === "saldos" && (
